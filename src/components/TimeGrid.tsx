@@ -1009,12 +1009,10 @@ const DayHeader = ({ day, mode, width, locale, activeDate, onPressDateHeader }: 
       <View
         style={[
           styles.dayHeaderBadge,
-          isHighlighted && {
-            backgroundColor: theme.colors.todayBackground,
-            borderRadius: 999,
-            width: badgeSize,
-            height: badgeSize,
-          },
+          // Reserve the badge's size on every day so the highlight circle doesn't
+          // change the header's dimensions between today and other days (no shift).
+          { width: badgeSize, height: badgeSize, borderRadius: 999 },
+          isHighlighted && { backgroundColor: theme.colors.todayBackground },
         ]}
       >
         <Text
