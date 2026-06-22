@@ -31,12 +31,15 @@ export const getViewDays = (
   date: Date,
   weekStartsOn: WeekStartsOn,
   numberOfDays = 1,
+  isRTL = false,
 ): Date[] => {
-  if (mode === 'week') return getWeekDays(date, weekStartsOn);
-  const start = startOfDay(date);
-  return Array.from({ length: viewDayCount(mode, numberOfDays) }, (_, index) =>
-    addDays(start, index),
-  );
+  const days =
+    mode === 'week'
+      ? getWeekDays(date, weekStartsOn)
+      : Array.from({ length: viewDayCount(mode, numberOfDays) }, (_, index) =>
+          addDays(startOfDay(date), index),
+        );
+  return isRTL ? days.reverse() : days;
 };
 
 export const isWeekend = (date: Date): boolean => {

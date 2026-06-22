@@ -88,6 +88,13 @@ export type CalendarProps<T> = {
   /** A date-fns `Locale` for weekday/date labels. Defaults to English. */
   locale?: Locale;
   /**
+   * Lay the day columns out right-to-left (month, week/day grid and all-day lane).
+   * Cosmetic only: the hour gutter stays on the left and paging still advances
+   * with the system scroll direction. Default false. For full RTL (including
+   * scroll direction), also enable React Native's `I18nManager`.
+   */
+  isRTL?: boolean;
+  /**
    * Allow a fling to carry across several pages before snapping. Default false:
    * one day/week/month per swipe.
    */
@@ -142,6 +149,7 @@ export function Calendar<T>({
   scrollOffsetMinutes,
   showNowIndicator,
   locale,
+  isRTL,
   freeSwipe,
   renderTimeGridHeader,
 }: CalendarProps<T>) {
@@ -191,6 +199,7 @@ export function Calendar<T>({
           moreLabel={moreLabel}
           showAdjacentMonths={showAdjacentMonths}
           disableMonthEventCellPress={disableMonthEventCellPress}
+          isRTL={isRTL}
           calendarCellStyle={calendarCellStyle}
           renderEvent={resolvedRenderEvent}
           keyExtractor={keyExtractor}
@@ -237,6 +246,7 @@ export function Calendar<T>({
           maxHourHeight={maxHourHeight}
           showNowIndicator={showNowIndicator}
           locale={locale}
+          isRTL={isRTL}
           freeSwipe={freeSwipe}
           onPressEvent={handlePressEvent}
           onLongPressEvent={handleLongPressEvent}

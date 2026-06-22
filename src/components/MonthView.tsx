@@ -38,6 +38,8 @@ export type MonthViewProps<T> = {
   showAdjacentMonths?: boolean;
   /** Ignore taps on month-cell events (day-cell taps still fire). Default false. */
   disableMonthEventCellPress?: boolean;
+  /** Reverse the day order within each week (right-to-left). Default false. */
+  isRTL?: boolean;
   /** Per-date style merged onto the day cell. */
   calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
   renderEvent: RenderEvent<T>;
@@ -59,6 +61,7 @@ function MonthViewInner<T>({
   moreLabel = '{moreCount} More',
   showAdjacentMonths = true,
   disableMonthEventCellPress = false,
+  isRTL = false,
   calendarCellStyle,
   renderEvent,
   keyExtractor,
@@ -74,8 +77,9 @@ function MonthViewInner<T>({
   const weeks = useMemo(() => {
     const start = startOfWeek(startOfMonth(date), { weekStartsOn });
     const end = endOfWeek(endOfMonth(date), { weekStartsOn });
-    return chunkIntoWeeks(eachDayOfInterval({ start, end }));
-  }, [date, weekStartsOn]);
+    const chunked = chunkIntoWeeks(eachDayOfInterval({ start, end }));
+    return isRTL ? chunked.map((week) => [...week].reverse()) : chunked;
+  }, [date, weekStartsOn, isRTL]);
 
   // Group events by calendar day once per `events` change, rather than scanning
   // the whole list inside every one of the (up to) 42 day cells on each render.

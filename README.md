@@ -34,16 +34,19 @@ modes, **all-day events** (lane + `allDay` flag), multi-day clipping, `minHour`/
 `moreLabel`, `showAdjacentMonths`, `disableMonthEventCellPress`, per-event
 `disabled`, `onPress`/`onLongPress` for events, cells and date headers,
 `eventCellStyle`, `calendarCellStyle`, a `headerComponent` slot, date-fns
-`locale`, and theming. Text styling that big-calendar exposes via
-`calendarCellTextStyle` is covered by `CalendarTheme.text`; overlapping events
-are laid out in side-by-side columns automatically.
+`locale`, right-to-left column order (`isRTL`), and theming. Text styling that
+big-calendar exposes via `calendarCellTextStyle` is covered by
+`CalendarTheme.text`; overlapping events are laid out in side-by-side columns
+automatically.
 
 **Trade-offs (where react-native-big-calendar may suit you better)**
 
 - It's **opinionated about peers**: Reanimated, Gesture Handler and
   `@legendapp/list` are required. `react-native-big-calendar` is more
   self-contained (no Reanimated/Gesture Handler).
-- **RTL** layout is not yet implemented (tracked for a future release).
+- **RTL** is cosmetic (`isRTL` reverses the day-column order, like
+  big-calendar's): the hour gutter stays on the left and paging follows the
+  system scroll direction. Enable React Native's `I18nManager` for full RTL.
 
 ## Install
 
@@ -164,6 +167,15 @@ date labels:
 import { fr } from 'date-fns/locale';
 
 <Calendar /* ... */ locale={fr} weekStartsOn={1} />;
+```
+
+Pass `isRTL` to reverse the day-column order in every view (month grid, week/day
+grid and the all-day lane). It's cosmetic — the hour gutter stays on the left and
+paging follows the system scroll direction — so enable React Native's
+`I18nManager` alongside it for full right-to-left behaviour.
+
+```tsx
+<Calendar /* ... */ isRTL locale={ar} weekStartsOn={6} />;
 ```
 
 ### Week/day grid options

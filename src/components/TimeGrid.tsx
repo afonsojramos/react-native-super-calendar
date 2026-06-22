@@ -253,6 +253,7 @@ type TimetablePageProps<T> = {
   maxHour: number;
   ampm: boolean;
   timeslots: number;
+  isRTL: boolean;
   calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
   minHourHeight: number;
   maxHourHeight: number;
@@ -285,6 +286,7 @@ function TimetablePageInner<T>({
   maxHour,
   ampm,
   timeslots,
+  isRTL,
   calendarCellStyle,
   minHourHeight,
   maxHourHeight,
@@ -323,8 +325,8 @@ function TimetablePageInner<T>({
   );
 
   const days = useMemo(
-    () => getViewDays(mode, date, weekStartsOn, numberOfDays),
-    [mode, date, weekStartsOn, numberOfDays],
+    () => getViewDays(mode, date, weekStartsOn, numberOfDays, isRTL),
+    [mode, date, weekStartsOn, numberOfDays, isRTL],
   );
 
   const dayWidth = (width - hourColumnWidth) / days.length;
@@ -584,6 +586,8 @@ export type TimeGridProps<T> = {
   maxHour?: number;
   /** Show hour labels in 12-hour AM/PM form. Default false (24h). */
   ampm?: boolean;
+  /** Reverse day-column order (right-to-left). Default false. */
+  isRTL?: boolean;
   minHourHeight?: number;
   maxHourHeight?: number;
   showNowIndicator?: boolean;
@@ -620,6 +624,7 @@ function TimeGridInner<T>({
   minHour = 0,
   maxHour = HOURS_PER_DAY,
   ampm = false,
+  isRTL = false,
   minHourHeight = DEFAULT_MIN_HOUR_HEIGHT,
   maxHourHeight = DEFAULT_MAX_HOUR_HEIGHT,
   showNowIndicator = true,
@@ -691,8 +696,8 @@ function TimeGridInner<T>({
   // Header days track the active page (page-aligned), so they always match the
   // columns below and a swipe never flashes another day's label.
   const headerDays = useMemo(
-    () => getViewDays(mode, pageDates[activeIndex] ?? date, weekStartsOn, numberOfDays),
-    [mode, pageDates, activeIndex, date, weekStartsOn, numberOfDays],
+    () => getViewDays(mode, pageDates[activeIndex] ?? date, weekStartsOn, numberOfDays, isRTL),
+    [mode, pageDates, activeIndex, date, weekStartsOn, numberOfDays, isRTL],
   );
 
   const handleViewableItemsChanged = useCallback(
@@ -736,6 +741,7 @@ function TimeGridInner<T>({
           maxHour={clampedMaxHour}
           ampm={ampm}
           timeslots={timeslots}
+          isRTL={isRTL}
           calendarCellStyle={calendarCellStyle}
           minHourHeight={minHourHeight}
           maxHourHeight={maxHourHeight}
@@ -767,6 +773,7 @@ function TimeGridInner<T>({
       clampedMaxHour,
       ampm,
       timeslots,
+      isRTL,
       calendarCellStyle,
       minHourHeight,
       maxHourHeight,

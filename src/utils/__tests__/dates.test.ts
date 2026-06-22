@@ -63,6 +63,23 @@ describe('getViewDays', () => {
     expect(getViewDays('3days', wed, 1).map((d) => format(d, 'd'))).toEqual(['17', '18', '19']);
     expect(getViewDays('custom', wed, 1, 2).map((d) => format(d, 'd'))).toEqual(['17', '18']);
   });
+
+  it('reverses the column order when isRTL is set', () => {
+    expect(getViewDays('3days', wed, 1, 1, true).map((d) => format(d, 'd'))).toEqual([
+      '19',
+      '18',
+      '17',
+    ]);
+    expect(getViewDays('week', wed, 1, 1, true).map((d) => format(d, 'EEE'))).toEqual([
+      'Sun',
+      'Sat',
+      'Fri',
+      'Thu',
+      'Wed',
+      'Tue',
+      'Mon',
+    ]);
+  });
 });
 
 describe('isWeekend', () => {

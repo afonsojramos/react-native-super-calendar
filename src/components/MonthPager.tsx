@@ -29,6 +29,7 @@ export type MonthPagerProps<T> = {
   moreLabel?: string;
   showAdjacentMonths?: boolean;
   disableMonthEventCellPress?: boolean;
+  isRTL?: boolean;
   calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
   renderEvent: RenderEvent<T>;
   keyExtractor: EventKeyExtractor<T>;
@@ -51,6 +52,7 @@ function MonthPagerInner<T>({
   moreLabel,
   showAdjacentMonths,
   disableMonthEventCellPress,
+  isRTL,
   calendarCellStyle,
   renderEvent,
   keyExtractor,
@@ -123,6 +125,7 @@ function MonthPagerInner<T>({
           moreLabel={moreLabel}
           showAdjacentMonths={showAdjacentMonths}
           disableMonthEventCellPress={disableMonthEventCellPress}
+          isRTL={isRTL}
           calendarCellStyle={calendarCellStyle}
           renderEvent={renderEvent}
           keyExtractor={keyExtractor}
@@ -145,6 +148,7 @@ function MonthPagerInner<T>({
       moreLabel,
       showAdjacentMonths,
       disableMonthEventCellPress,
+      isRTL,
       calendarCellStyle,
       renderEvent,
       keyExtractor,
