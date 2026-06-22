@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/afonsojramos/react-native-bigger-calendar/compare/v0.2.1...v0.2.2) (2026-06-22)
+
+
+### Build System
+
+* **example:** track the pnpm lockfile ([6abdee1](https://github.com/afonsojramos/react-native-bigger-calendar/commit/6abdee198bd6b19ce58390ab7f1caff1c05a902e))
+
 ## [0.2.1](https://github.com/afonsojramos/react-native-bigger-calendar/compare/v0.2.0...v0.2.1) (2026-06-22)
 
 
