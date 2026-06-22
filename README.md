@@ -17,29 +17,33 @@ modern list virtualization — trading framework-agnosticism for a richer,
 gesture-driven experience. It's **not a fork**; the API differs, and the name is
 an homage. 🙇
 
-**What it adds**
+**What it adds over react-native-big-calendar**
 
 - 🤏 **Pinch-to-zoom** time grid — row height is a Reanimated shared value, so
   zooming runs on the UI thread with zero React re-renders.
-- ♾️ **Virtualized, snap-paged** months/weeks/days (via `@legendapp/list`) — swipe
-  across years of dates, with native one-page paging (or opt into `freeSwipe`).
+- ♾️ **Virtualized, snap-paged** views (via `@legendapp/list`) — swipe across
+  years of dates, with native one-page paging (or opt into `freeSwipe`).
 - 🧩 **Generic events + render-prop _component_** — `CalendarEvent<T>` carries your
-  own fields, and `renderEvent` is a component (so it may use hooks) that
-  receives the event box's live pixel height for progressive disclosure as the
-  grid zooms.
-- 🗓️ **Multi-day events** clipped per day, with `continuesBefore`/`continuesAfter`
-  flags for continuation hints.
-- ⏱️ Hour windowing (`minHour`/`maxHour`), 12-hour labels (`ampm`), tap-an-empty-
-  slot (`onPressCell`), and a live now-indicator.
+  own fields, and `renderEvent` is a component (so it may use hooks) that receives
+  the event box's live pixel height for progressive disclosure as the grid zooms.
+
+**Feature parity.** It also covers the rest of react-native-big-calendar's
+surface: month / day / 3-day / week / **custom N-day** / **agenda (`schedule`)**
+modes, **all-day events** (lane + `allDay` flag), multi-day clipping, `minHour`/
+`maxHour`, `ampm`, `timeslots`, `hideHours`, `showWeekNumber`, `sortedMonthView`,
+`moreLabel`, `showAdjacentMonths`, `disableMonthEventCellPress`, per-event
+`disabled`, `onPress`/`onLongPress` for events, cells and date headers,
+`eventCellStyle`, `calendarCellStyle`, a `headerComponent` slot, date-fns
+`locale`, and theming. Text styling that big-calendar exposes via
+`calendarCellTextStyle` is covered by `CalendarTheme.text`; overlapping events
+are laid out in side-by-side columns automatically.
 
 **Trade-offs (where react-native-big-calendar may suit you better)**
 
 - It's **opinionated about peers**: Reanimated, Gesture Handler and
   `@legendapp/list` are required. `react-native-big-calendar` is more
   self-contained (no Reanimated/Gesture Handler).
-- It focuses on month/week/day. If you need a built-in agenda/schedule view, an
-  all-day event lane, or broad locale/RTL coverage today, `react-native-big-calendar`
-  is more mature on those fronts.
+- **RTL** layout is not yet implemented (tracked for a future release).
 
 ## Install
 
