@@ -31,7 +31,9 @@ export type MonthViewProps<T> = {
   renderEvent: RenderEvent<T>;
   keyExtractor: EventKeyExtractor<T>;
   onPressDay?: (date: Date) => void;
+  onLongPressDay?: (date: Date) => void;
   onPressEvent: (event: CalendarEvent<T>) => void;
+  onLongPressEvent?: (event: CalendarEvent<T>) => void;
   onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
 };
 
@@ -43,7 +45,9 @@ function MonthViewInner<T>({
   renderEvent,
   keyExtractor,
   onPressDay,
+  onLongPressDay,
   onPressEvent,
+  onLongPressEvent,
   onPressMore,
 }: MonthViewProps<T>) {
   const theme = useCalendarTheme();
@@ -96,7 +100,8 @@ function MonthViewInner<T>({
           isWeekend(day) && { backgroundColor: theme.colors.weekendBackground },
         ]}
         onPress={onPressDay ? () => onPressDay(day) : undefined}
-        disabled={!onPressDay}
+        onLongPress={onLongPressDay ? () => onLongPressDay(day) : undefined}
+        disabled={!onPressDay && !onLongPressDay}
         accessibilityRole={onPressDay ? 'button' : undefined}
         accessibilityLabel={accessibilityLabel}
       >
@@ -115,7 +120,12 @@ function MonthViewInner<T>({
         </View>
         {dayEvents.slice(0, maxVisibleEventCount).map((event, index) => (
           <View key={keyExtractor(event, index)} style={styles.monthEvent}>
-            <RenderEventComponent event={event} mode="month" onPress={() => onPressEvent(event)} />
+            <RenderEventComponent
+              event={event}
+              mode="month"
+              onPress={() => onPressEvent(event)}
+              onLongPress={onLongPressEvent ? () => onLongPressEvent(event) : undefined}
+            />
           </View>
         ))}
         {hiddenCount > 0 ? (

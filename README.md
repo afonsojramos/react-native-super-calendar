@@ -161,6 +161,8 @@ See `CalendarTheme` for the full set of tokens. Anything you omit falls back to
 - `ampm` switches hour labels to 12-hour AM/PM (default 24h).
 - `onPressCell(date)` fires when empty grid space is tapped, with the date+time
   under the touch — handy for "create event". (Event taps still go to `onPressEvent`.)
+- **Long-press** mirrors every tap: `onLongPressEvent(event)`, `onLongPressCell(date)`
+  (week/day), and `onLongPressDay(date)` (month). All optional.
 - `freeSwipe` (default `false`) controls paging: by default one day/week/month
   moves per swipe; set it to allow a fling to carry across several pages (still
   snapping to a page boundary). Applies to all modes.

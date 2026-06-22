@@ -99,6 +99,7 @@ type AnimatedEventBoxProps<T> = {
   mode: CalendarMode;
   renderEvent: RenderEvent<T>;
   onPress: (event: CalendarEvent<T>) => void;
+  onLongPress?: (event: CalendarEvent<T>) => void;
 };
 
 function AnimatedEventBox<T>({
@@ -110,6 +111,7 @@ function AnimatedEventBox<T>({
   mode,
   renderEvent,
   onPress,
+  onLongPress,
 }: AnimatedEventBoxProps<T>) {
   const RenderEventComponent = renderEvent;
   // Live pixel height of the box, driven on the UI thread by the shared
@@ -130,6 +132,7 @@ function AnimatedEventBox<T>({
   );
 
   const handlePress = () => onPress(positioned.event);
+  const handleLongPress = onLongPress ? () => onLongPress(positioned.event) : undefined;
 
   return (
     <Animated.View style={[styles.eventBox, { left, width }, boxStyle]}>
@@ -140,6 +143,7 @@ function AnimatedEventBox<T>({
         continuesBefore={positioned.continuesBefore}
         continuesAfter={positioned.continuesAfter}
         onPress={handlePress}
+        onLongPress={handleLongPress}
       />
     </Animated.View>
   );
@@ -226,7 +230,9 @@ type TimetablePageProps<T> = {
   renderEvent: RenderEvent<T>;
   keyExtractor: EventKeyExtractor<T>;
   onPressEvent: (event: CalendarEvent<T>) => void;
+  onLongPressEvent?: (event: CalendarEvent<T>) => void;
   onPressCell?: (date: Date) => void;
+  onLongPressCell?: (date: Date) => void;
 };
 
 // A single date's grid: the pinch-zoomable, vertically-scrolling time column.
@@ -253,7 +259,9 @@ function TimetablePageInner<T>({
   renderEvent,
   keyExtractor,
   onPressEvent,
+  onLongPressEvent,
   onPressCell,
+  onLongPressCell,
 }: TimetablePageProps<T>) {
   const theme = useCalendarTheme();
   const { width } = useWindowDimensions();
@@ -296,17 +304,24 @@ function TimetablePageInner<T>({
 
   // Map a tap on empty grid space back to the date+time it represents. Reads the
   // live row height on the JS thread to convert the touch Y into minutes.
-  const handleBackgroundPress = (event: GestureResponderEvent) => {
-    if (!onPressCell) return;
+  const cellDateFromTouch = (event: GestureResponderEvent): Date | null => {
     const { locationX, locationY } = event.nativeEvent;
     const dayIndex = days.length === 1 ? 0 : Math.floor(locationX / dayWidth);
     const day = days[dayIndex];
-    if (!day) return;
+    if (!day) return null;
     const minutes = Math.round((minHour + locationY / heightSource.value) * MINUTES_PER_HOUR);
     const pressed = new Date(day);
     pressed.setHours(0, 0, 0, 0);
     pressed.setMinutes(minutes);
-    onPressCell(pressed);
+    return pressed;
+  };
+  const handleBackgroundPress = (event: GestureResponderEvent) => {
+    const date = onPressCell && cellDateFromTouch(event);
+    if (date) onPressCell?.(date);
+  };
+  const handleBackgroundLongPress = (event: GestureResponderEvent) => {
+    const date = onLongPressCell && cellDateFromTouch(event);
+    if (date) onLongPressCell?.(date);
   };
 
   // The hours (rows/labels) visible in the window [minHour, maxHour).
@@ -367,13 +382,14 @@ function TimetablePageInner<T>({
           }}
         >
           <Animated.View style={[styles.content, fullHeightStyle]}>
-            {onPressCell ? (
+            {onPressCell || onLongPressCell ? (
               // Behind the events, so empty-space taps create while event taps
               // still hit their box. Hidden from screen readers (a convenience
               // gesture, not the primary create path).
               <Pressable
                 style={[styles.cellPressLayer, { left: hourColumnWidth }]}
-                onPress={handleBackgroundPress}
+                onPress={onPressCell ? handleBackgroundPress : undefined}
+                onLongPress={onLongPressCell ? handleBackgroundLongPress : undefined}
                 importantForAccessibility="no"
                 accessibilityElementsHidden
               />
@@ -437,6 +453,7 @@ function TimetablePageInner<T>({
                       mode={mode}
                       renderEvent={renderEvent}
                       onPress={onPressEvent}
+                      onLongPress={onLongPressEvent}
                     />
                   );
                 }),
@@ -484,7 +501,9 @@ export type TimeGridProps<T> = {
   locale?: string;
   freeSwipe?: boolean;
   onPressEvent: (event: CalendarEvent<T>) => void;
+  onLongPressEvent?: (event: CalendarEvent<T>) => void;
   onPressCell?: (date: Date) => void;
+  onLongPressCell?: (date: Date) => void;
   onChangeDate: (date: Date) => void;
   /** Optional header above the grid (e.g. weekday labels). Rendered full-width. */
   renderHeader?: (days: Date[]) => React.ReactNode;
@@ -510,7 +529,9 @@ function TimeGridInner<T>({
   locale,
   freeSwipe = false,
   onPressEvent,
+  onLongPressEvent,
   onPressCell,
+  onLongPressCell,
   onChangeDate,
   renderHeader,
 }: TimeGridProps<T>) {
@@ -616,7 +637,9 @@ function TimeGridInner<T>({
           renderEvent={renderEvent}
           keyExtractor={keyExtractor}
           onPressEvent={onPressEvent}
+          onLongPressEvent={onLongPressEvent}
           onPressCell={onPressCell}
+          onLongPressCell={onLongPressCell}
         />
       </View>
     ),
@@ -642,7 +665,9 @@ function TimeGridInner<T>({
       renderEvent,
       keyExtractor,
       onPressEvent,
+      onLongPressEvent,
       onPressCell,
+      onLongPressCell,
     ],
   );
 

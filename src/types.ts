@@ -39,6 +39,8 @@ export type RenderEventArgs<T = unknown> = {
   continuesBefore?: boolean;
   continuesAfter?: boolean;
   onPress: () => void;
+  /** Wired when the consumer passes `onLongPressEvent`; otherwise undefined. */
+  onLongPress?: () => void;
 };
 
 /**

@@ -27,7 +27,9 @@ export type MonthPagerProps<T> = {
   renderEvent: RenderEvent<T>;
   keyExtractor: EventKeyExtractor<T>;
   onPressDay?: (date: Date) => void;
+  onLongPressDay?: (date: Date) => void;
   onPressEvent: (event: CalendarEvent<T>) => void;
+  onLongPressEvent?: (event: CalendarEvent<T>) => void;
   onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
   onChangeDate: (date: Date) => void;
   freeSwipe?: boolean;
@@ -41,7 +43,9 @@ function MonthPagerInner<T>({
   renderEvent,
   keyExtractor,
   onPressDay,
+  onLongPressDay,
   onPressEvent,
+  onLongPressEvent,
   onPressMore,
   onChangeDate,
   freeSwipe = false,
@@ -105,7 +109,9 @@ function MonthPagerInner<T>({
           renderEvent={renderEvent}
           keyExtractor={keyExtractor}
           onPressDay={onPressDay}
+          onLongPressDay={onLongPressDay}
           onPressEvent={onPressEvent}
+          onLongPressEvent={onLongPressEvent}
           onPressMore={onPressMore}
         />
       </View>
@@ -119,7 +125,9 @@ function MonthPagerInner<T>({
       renderEvent,
       keyExtractor,
       onPressDay,
+      onLongPressDay,
       onPressEvent,
+      onLongPressEvent,
       onPressMore,
     ],
   );

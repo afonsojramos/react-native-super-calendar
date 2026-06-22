@@ -8,7 +8,7 @@ import type { RenderEventArgs } from '../types';
  * and (on the day/week grid) its time range. Pass your own `renderEvent` to
  * `<Calendar>` to replace it entirely.
  */
-export function DefaultEvent<T>({ event, mode, onPress }: RenderEventArgs<T>) {
+export function DefaultEvent<T>({ event, mode, onPress, onLongPress }: RenderEventArgs<T>) {
   const theme = useCalendarTheme();
   const showTime = mode !== 'month';
 
@@ -16,6 +16,7 @@ export function DefaultEvent<T>({ event, mode, onPress }: RenderEventArgs<T>) {
     <TouchableOpacity
       style={[styles.box, { backgroundColor: theme.colors.eventBackground }]}
       onPress={onPress}
+      onLongPress={onLongPress}
       activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel={event.title}

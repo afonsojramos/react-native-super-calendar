@@ -18,12 +18,18 @@ export type CalendarProps<T> = {
   date: Date;
   onChangeDate: (date: Date) => void;
   onPressEvent: (event: CalendarEvent<T>) => void;
+  /** Long-press an event (month/week/day). */
+  onLongPressEvent?: (event: CalendarEvent<T>) => void;
   /** Tap a day cell (month mode) — e.g. drill into the day view. */
   onPressDay?: (date: Date) => void;
+  /** Long-press a day cell (month mode). */
+  onLongPressDay?: (date: Date) => void;
   /** Tap the "+N more" overflow label in a month cell. */
   onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
   /** Tap empty space on the week/day grid; receives the date+time pressed. */
   onPressCell?: (date: Date) => void;
+  /** Long-press empty space on the week/day grid; receives the date+time. */
+  onLongPressCell?: (date: Date) => void;
   /** Max events shown per month cell before they collapse into "+N more". */
   maxVisibleEventCount?: number;
   /** First day of the week. Sunday = 0 (default) … Saturday = 6. */
@@ -74,9 +80,12 @@ export function Calendar<T>({
   date,
   onChangeDate,
   onPressEvent,
+  onLongPressEvent,
   onPressDay,
+  onLongPressDay,
   onPressMore,
   onPressCell,
+  onLongPressCell,
   maxVisibleEventCount = 2,
   weekStartsOn = 0,
   renderEvent = DefaultEvent,
@@ -111,7 +120,9 @@ export function Calendar<T>({
           renderEvent={renderEvent}
           keyExtractor={keyExtractor}
           onPressDay={onPressDay}
+          onLongPressDay={onLongPressDay}
           onPressEvent={onPressEvent}
+          onLongPressEvent={onLongPressEvent}
           onPressMore={onPressMore}
           onChangeDate={onChangeDate}
           freeSwipe={freeSwipe}
@@ -137,7 +148,9 @@ export function Calendar<T>({
           locale={locale}
           freeSwipe={freeSwipe}
           onPressEvent={onPressEvent}
+          onLongPressEvent={onLongPressEvent}
           onPressCell={onPressCell}
+          onLongPressCell={onLongPressCell}
           onChangeDate={onChangeDate}
           renderHeader={renderTimeGridHeader}
         />
