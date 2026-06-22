@@ -1,0 +1,159 @@
+import {
+  LegendList,
+  type LegendListRef,
+  type LegendListRenderItemProps,
+  type OnViewableItemsChangedInfo,
+} from '@legendapp/list/react-native';
+import { addMonths, differenceInCalendarMonths, startOfMonth } from 'date-fns';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from '../types';
+import { MonthView } from './MonthView';
+
+// Months rendered either side of the current page. LegendList virtualises, so
+// only a few mount at once; a wide window (5 years each way) means the user
+// effectively never runs out of months to swipe. Items are keyed by month and
+// never recycled.
+const PAGE_WINDOW = 60;
+// A page must be ~fully on screen before it becomes the committed month, so
+// paging commits once per settle rather than mid-swipe.
+const PAGE_VIEWABILITY = { itemVisiblePercentThreshold: 90 };
+
+export type MonthPagerProps<T> = {
+  date: Date;
+  events: CalendarEvent<T>[];
+  maxVisibleEventCount: number;
+  weekStartsOn: WeekStartsOn;
+  renderEvent: RenderEvent<T>;
+  keyExtractor: EventKeyExtractor<T>;
+  onPressDay?: (date: Date) => void;
+  onPressEvent: (event: CalendarEvent<T>) => void;
+  onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
+  onChangeDate: (date: Date) => void;
+};
+
+function MonthPagerInner<T>({
+  date,
+  events,
+  maxVisibleEventCount,
+  weekStartsOn,
+  renderEvent,
+  keyExtractor,
+  onPressDay,
+  onPressEvent,
+  onPressMore,
+  onChangeDate,
+}: MonthPagerProps<T>) {
+  const { width, height } = useWindowDimensions();
+  const listRef = useRef<LegendListRef>(null);
+  // Horizontal list items need an explicit cross-axis height; seed it with the
+  // window height (so it renders immediately and in tests) and refine to the
+  // exact area on layout. Without this the grid collapses to 0px.
+  const [pageHeight, setPageHeight] = useState(height);
+
+  // A fixed window of months, anchored once and aligned to the month start. The
+  // array never shifts as the date changes, so paging never re-renders a page's
+  // content — LegendList virtualises and keys by month.
+  const [anchorDate] = useState(date);
+  const anchor = useMemo(() => startOfMonth(anchorDate), [anchorDate]);
+  const monthDates = useMemo(
+    () => Array.from({ length: PAGE_WINDOW * 2 + 1 }, (_, i) => addMonths(anchor, i - PAGE_WINDOW)),
+    [anchor],
+  );
+  const indexOfMonth = useCallback(
+    (target: Date) => differenceInCalendarMonths(startOfMonth(target), anchor) + PAGE_WINDOW,
+    [anchor],
+  );
+
+  // The committed month's page is the centred/active one. Derived (not stored)
+  // so it always reflects the date. `viewedIndexRef` tracks where the list
+  // actually sits, letting us tell swipe-driven month changes from external ones.
+  const activeIndex = indexOfMonth(date);
+  const viewedIndexRef = useRef(activeIndex);
+
+  const handleViewableItemsChanged = useCallback(
+    (info: OnViewableItemsChangedInfo<Date>) => {
+      const settled = info.viewableItems.find((token) => token.isViewable);
+      if (settled?.index == null || settled.index === viewedIndexRef.current) return;
+      viewedIndexRef.current = settled.index;
+      if (settled.item) onChangeDate(settled.item);
+    },
+    [onChangeDate],
+  );
+
+  // Realign the list when the month changes from outside a swipe (e.g. a "today"
+  // button). Swipe-driven changes already match.
+  useEffect(() => {
+    if (activeIndex === viewedIndexRef.current) return;
+    viewedIndexRef.current = activeIndex;
+    listRef.current?.scrollToIndex({ index: activeIndex, animated: false });
+  }, [activeIndex]);
+
+  const snapToIndices = useMemo(() => monthDates.map((_, index) => index), [monthDates]);
+  const keyExtractorList = useCallback((item: Date) => item.toISOString(), []);
+  const getFixedItemSize = useCallback(() => width, [width]);
+  const renderItem = useCallback(
+    ({ item }: LegendListRenderItemProps<Date>) => (
+      <View style={{ width, height: pageHeight }}>
+        <MonthView
+          date={item}
+          events={events}
+          maxVisibleEventCount={maxVisibleEventCount}
+          weekStartsOn={weekStartsOn}
+          renderEvent={renderEvent}
+          keyExtractor={keyExtractor}
+          onPressDay={onPressDay}
+          onPressEvent={onPressEvent}
+          onPressMore={onPressMore}
+        />
+      </View>
+    ),
+    [
+      width,
+      pageHeight,
+      events,
+      maxVisibleEventCount,
+      weekStartsOn,
+      renderEvent,
+      keyExtractor,
+      onPressDay,
+      onPressEvent,
+      onPressMore,
+    ],
+  );
+
+  return (
+    <View style={styles.pager} onLayout={(event) => setPageHeight(event.nativeEvent.layout.height)}>
+      <LegendList
+        ref={listRef}
+        style={styles.pagerList}
+        data={monthDates}
+        horizontal
+        recycleItems={false}
+        keyExtractor={keyExtractorList}
+        getFixedItemSize={getFixedItemSize}
+        snapToIndices={snapToIndices}
+        // One page per swipe: a fast fling stops at the adjacent month instead of
+        // skipping several. Pairs with the snap offsets LegendList derives from
+        // snapToIndices.
+        disableIntervalMomentum
+        initialScrollIndex={activeIndex}
+        showsHorizontalScrollIndicator={false}
+        viewabilityConfig={PAGE_VIEWABILITY}
+        onViewableItemsChanged={handleViewableItemsChanged}
+        renderItem={renderItem}
+      />
+    </View>
+  );
+}
+
+export const MonthPager = memo(MonthPagerInner) as typeof MonthPagerInner;
+
+const styles = StyleSheet.create({
+  pager: {
+    flex: 1,
+  },
+  pagerList: {
+    flex: 1,
+  },
+});
