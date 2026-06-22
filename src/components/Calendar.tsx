@@ -113,6 +113,8 @@ export type CalendarProps<T> = {
   freeSwipe?: boolean;
   /** Custom header above the week/day grid. Receives the visible days. */
   renderTimeGridHeader?: (days: Date[]) => React.ReactNode;
+  /** Replace the weekday-label header above the month grid. Return `null` to hide it. */
+  renderHeaderForMonthView?: (weekDays: Date[]) => React.ReactNode;
 };
 
 // Derive a key purely from event data so identity is stable across reorders and
@@ -170,6 +172,7 @@ export function Calendar<T>({
   isRTL,
   freeSwipe,
   renderTimeGridHeader,
+  renderHeaderForMonthView,
 }: CalendarProps<T>) {
   const mergedTheme = useMemo(() => mergeTheme(theme), [theme]);
   const internalCellHeight = useSharedValue(hourHeight);
@@ -220,6 +223,7 @@ export function Calendar<T>({
           disableMonthEventCellPress={disableMonthEventCellPress}
           isRTL={isRTL}
           showSixWeeks={showSixWeeks}
+          renderHeaderForMonthView={renderHeaderForMonthView}
           calendarCellStyle={calendarCellStyle}
           renderEvent={resolvedRenderEvent}
           keyExtractor={keyExtractor}

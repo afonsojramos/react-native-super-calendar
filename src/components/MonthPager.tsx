@@ -4,10 +4,19 @@ import {
   type LegendListRenderItemProps,
   type OnViewableItemsChangedInfo,
 } from '@legendapp/list/react-native';
-import { addMonths, differenceInCalendarMonths, type Locale, startOfMonth } from 'date-fns';
+import { addMonths, differenceInCalendarMonths, format, type Locale, startOfMonth } from 'date-fns';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, type StyleProp, useWindowDimensions, View, type ViewStyle } from 'react-native';
+import {
+  StyleSheet,
+  type StyleProp,
+  Text,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from 'react-native';
+import { useCalendarTheme } from '../theme';
 import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from '../types';
+import { getWeekDays } from '../utils/dates';
 import { MonthView } from './MonthView';
 
 // Months rendered either side of the current page. LegendList virtualises, so
@@ -42,6 +51,8 @@ export type MonthPagerProps<T> = {
   freeSwipe?: boolean;
   swipeEnabled?: boolean;
   showSixWeeks?: boolean;
+  /** Replace the weekday-label header above the month grid. Receives the week's days. */
+  renderHeaderForMonthView?: (weekDays: Date[]) => React.ReactNode;
 };
 
 function MonthPagerInner<T>({
@@ -67,6 +78,7 @@ function MonthPagerInner<T>({
   freeSwipe = false,
   swipeEnabled = true,
   showSixWeeks = false,
+  renderHeaderForMonthView,
 }: MonthPagerProps<T>) {
   const { width, height } = useWindowDimensions();
   const listRef = useRef<LegendListRef>(null);
@@ -112,6 +124,14 @@ function MonthPagerInner<T>({
     viewedIndexRef.current = activeIndex;
     listRef.current?.scrollToIndex({ index: activeIndex, animated: false });
   }, [activeIndex]);
+
+  // The seven weekday labels for the header above the grid. Weekday names depend
+  // only on `weekStartsOn`, so any week works; reuse the anchor. Reversed in RTL
+  // to line up with the mirrored day cells.
+  const weekDays = useMemo(() => {
+    const days = getWeekDays(anchor, weekStartsOn);
+    return isRTL ? days.reverse() : days;
+  }, [anchor, weekStartsOn, isRTL]);
 
   const snapToIndices = useMemo(() => monthDates.map((_, index) => index), [monthDates]);
   const keyExtractorList = useCallback((item: Date) => item.toISOString(), []);
@@ -167,42 +187,87 @@ function MonthPagerInner<T>({
   );
 
   return (
-    <View style={styles.pager} onLayout={(event) => setPageHeight(event.nativeEvent.layout.height)}>
-      <LegendList
-        // Remount when the measured page height changes so the list adopts the
-        // corrected item height. Without this the list can keep the oversized
-        // initial (window-height) seed and clip the last week row.
-        key={pageHeight}
-        ref={listRef}
-        style={styles.pagerList}
-        data={monthDates}
-        horizontal
-        recycleItems={false}
-        keyExtractor={keyExtractorList}
-        getFixedItemSize={getFixedItemSize}
-        scrollEnabled={swipeEnabled}
-        // Default: native paging — each page is the viewport width, so a swipe
-        // hard-stops at the adjacent month and can't fling past it. With
-        // `freeSwipe`, momentum carries across months and snaps to a boundary.
-        pagingEnabled={!freeSwipe}
-        snapToIndices={freeSwipe ? snapToIndices : undefined}
-        initialScrollIndex={activeIndex}
-        showsHorizontalScrollIndicator={false}
-        viewabilityConfig={PAGE_VIEWABILITY}
-        onViewableItemsChanged={handleViewableItemsChanged}
-        renderItem={renderItem}
-      />
+    <View style={styles.container}>
+      {renderHeaderForMonthView ? (
+        renderHeaderForMonthView(weekDays)
+      ) : (
+        <MonthWeekdayHeader weekDays={weekDays} locale={locale} />
+      )}
+      <View
+        style={styles.pager}
+        onLayout={(event) => setPageHeight(event.nativeEvent.layout.height)}
+      >
+        <LegendList
+          // Remount when the measured page height changes so the list adopts the
+          // corrected item height. Without this the list can keep the oversized
+          // initial (window-height) seed and clip the last week row.
+          key={pageHeight}
+          ref={listRef}
+          style={styles.pagerList}
+          data={monthDates}
+          horizontal
+          recycleItems={false}
+          keyExtractor={keyExtractorList}
+          getFixedItemSize={getFixedItemSize}
+          scrollEnabled={swipeEnabled}
+          // Default: native paging — each page is the viewport width, so a swipe
+          // hard-stops at the adjacent month and can't fling past it. With
+          // `freeSwipe`, momentum carries across months and snaps to a boundary.
+          pagingEnabled={!freeSwipe}
+          snapToIndices={freeSwipe ? snapToIndices : undefined}
+          initialScrollIndex={activeIndex}
+          showsHorizontalScrollIndicator={false}
+          viewabilityConfig={PAGE_VIEWABILITY}
+          onViewableItemsChanged={handleViewableItemsChanged}
+          renderItem={renderItem}
+        />
+      </View>
     </View>
   );
 }
 
 export const MonthPager = memo(MonthPagerInner) as typeof MonthPagerInner;
 
+type MonthWeekdayHeaderProps = {
+  weekDays: Date[];
+  locale?: Locale;
+};
+
+// The default weekday-label row above the month grid (e.g. "Mon Tue Wed…"),
+// one flex column per day to line up with the grid cells below.
+const MonthWeekdayHeader = ({ weekDays, locale }: MonthWeekdayHeaderProps) => {
+  const theme = useCalendarTheme();
+  return (
+    <View style={styles.weekdayHeader}>
+      {weekDays.map((day) => (
+        <Text
+          key={day.toISOString()}
+          style={[theme.text.weekday, styles.weekdayLabel, { color: theme.colors.textMuted }]}
+          allowFontScaling={false}
+        >
+          {format(day, 'EEE', { locale })}
+        </Text>
+      ))}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   pager: {
     flex: 1,
   },
   pagerList: {
     flex: 1,
+  },
+  weekdayHeader: {
+    flexDirection: 'row',
+    paddingBottom: 4,
+  },
+  weekdayLabel: {
+    flex: 1,
+    textAlign: 'center',
   },
 });
