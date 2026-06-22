@@ -82,6 +82,11 @@ function MonthViewInner<T>({
         ? theme.colors.text
         : theme.colors.textDisabled;
 
+    // Summarise the cell for screen readers: full date, today marker, and how
+    // many events it holds (the chips inside are grouped under this cell).
+    const eventCount = dayEvents.length;
+    const accessibilityLabel = `${format(day, 'EEEE, d LLLL yyyy')}${isToday ? ', today' : ''}, ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+
     return (
       <TouchableOpacity
         key={day.toISOString()}
@@ -92,7 +97,8 @@ function MonthViewInner<T>({
         ]}
         onPress={onPressDay ? () => onPressDay(day) : undefined}
         disabled={!onPressDay}
-        accessibilityLabel={format(day, 'EEEE, d LLLL yyyy')}
+        accessibilityRole={onPressDay ? 'button' : undefined}
+        accessibilityLabel={accessibilityLabel}
       >
         <View
           style={[
