@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, type CalendarEvent, type CalendarMode } from 'react-native-bigger-calendar';
 
 type EventMeta = { id: string; kind: 'lecture' | 'lab' | 'exam' };
@@ -36,34 +37,36 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <SafeAreaView style={styles.root}>
-        <View style={styles.tabs}>
-          {MODES.map((m) => (
-            <Pressable
-              key={m}
-              style={[styles.tab, mode === m && styles.tabActive]}
-              onPress={() => setMode(m)}
-            >
-              <Text style={[styles.tabText, mode === m && styles.tabTextActive]}>{m}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <Calendar
-          mode={mode}
-          date={date}
-          events={events}
-          weekStartsOn={1}
-          scrollOffsetMinutes={8 * 60}
-          onChangeDate={setDate}
-          onPressEvent={(event) => console.log('press event:', event.title)}
-          onPressDay={(day) => {
-            setDate(day);
-            setMode('day');
-          }}
-          onPressMore={(dayEvents, day) => console.log('more:', day.toDateString(), dayEvents.length)}
-          onPressCell={(at) => console.log('create at:', at.toISOString())}
-        />
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.root}>
+          <View style={styles.tabs}>
+            {MODES.map((m) => (
+              <Pressable
+                key={m}
+                style={[styles.tab, mode === m && styles.tabActive]}
+                onPress={() => setMode(m)}
+              >
+                <Text style={[styles.tabText, mode === m && styles.tabTextActive]}>{m}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Calendar
+            mode={mode}
+            date={date}
+            events={events}
+            weekStartsOn={1}
+            scrollOffsetMinutes={8 * 60}
+            onChangeDate={setDate}
+            onPressEvent={(event) => console.log('press event:', event.title)}
+            onPressDay={(day) => {
+              setDate(day);
+              setMode('day');
+            }}
+            onPressMore={(dayEvents, day) => console.log('more:', day.toDateString(), dayEvents.length)}
+            onPressCell={(at) => console.log('create at:', at.toISOString())}
+          />
+        </SafeAreaView>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
