@@ -551,7 +551,10 @@ function TimetablePageInner<T>({
                   const columnWidth = dayWidth / positioned.columns;
                   return (
                     <AnimatedEventBox
-                      key={keyExtractor(positioned.event, eventIndex)}
+                      // Prefix with the day so a multi-day event's per-day segments
+                      // (which share the same event key) stay unique across the
+                      // flattened list of all days' boxes.
+                      key={`${dayIndex}:${keyExtractor(positioned.event, eventIndex)}`}
                       positioned={positioned}
                       cellHeight={heightSource}
                       minHour={minHour}
