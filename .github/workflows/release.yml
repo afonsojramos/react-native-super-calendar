@@ -34,11 +34,7 @@ jobs:
       id-token: write # required for npm Trusted Publishing (OIDC) — no NPM_TOKEN
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-      # npm Trusted Publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.x.
+      - uses: jdx/mise-action@v4
       - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run typecheck
