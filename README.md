@@ -126,9 +126,11 @@ are also exported for advanced layouts:
 
 ## Notes & limitations
 
-- **Single-day events.** Events are placed on the calendar day of their `start`.
-  An event spanning midnight renders only on its start day (and its box is not
-  clamped to the day boundary). Split multi-day events before passing them in.
+- **Multi-day events** are supported: pass one event and it appears on every day
+  it spans. On the week/day grid each day shows the clipped segment (so a
+  23:00→01:00 event renders 23:00–24:00, then 00:00–01:00), and `renderEvent`
+  receives `continuesBefore`/`continuesAfter` so you can draw continuation hints.
+  A dedicated all-day lane (and an explicit `allDay` flag) is not yet provided.
 - **`weekStartsOn` defaults to `0` (Sunday).** Pass `1` for Monday-first.
 - **Controlled `date`.** The calendar is controlled: echo `onChangeDate` back
   into the `date` prop, or paging and the "today" realign won't track.
