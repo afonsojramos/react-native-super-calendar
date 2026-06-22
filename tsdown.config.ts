@@ -8,6 +8,4 @@ export default defineConfig({
   platform: 'neutral',
   outDir: 'dist',
   clean: true,
-  // react, react-native, reanimated, gesture-handler, @legendapp/list and date-fns
-  // are peerDependencies, so tsdown externalizes them automatically.
 });

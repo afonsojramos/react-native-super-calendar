@@ -5,8 +5,6 @@
     "moduleResolution": "Bundler",
     "lib": ["ESNext"],
     "jsx": "react-jsx",
-    // TypeScript 6 no longer auto-includes every @types package; list the ambient
-    // ones explicitly (jest globals for tests, node for setInterval/timers).
     "types": ["jest", "node"],
     "strict": true,
     "noUnusedLocals": true,
