@@ -9,13 +9,20 @@ import {
   startOfDay,
   startOfMonth,
   startOfWeek,
-} from 'date-fns';
-import { memo, useMemo } from 'react';
-import { StyleSheet, type StyleProp, Text, TouchableOpacity, View, type ViewStyle } from 'react-native';
-import { useCalendarTheme } from '../theme';
-import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from '../types';
-import { getIsToday, isSameCalendarDay, isWeekend } from '../utils/dates';
-import { eventDayKeys, isAllDayEvent } from '../utils/layout';
+} from "date-fns";
+import { memo, useMemo } from "react";
+import {
+  StyleSheet,
+  type StyleProp,
+  Text,
+  TouchableOpacity,
+  View,
+  type ViewStyle,
+} from "react-native";
+import { useCalendarTheme } from "../theme";
+import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from "../types";
+import { getIsToday, isSameCalendarDay, isWeekend } from "../utils/dates";
+import { eventDayKeys, isAllDayEvent } from "../utils/layout";
 
 const chunkIntoWeeks = (days: Date[]): Date[][] => {
   const weeks: Date[][] = [];
@@ -63,7 +70,7 @@ function MonthViewInner<T>({
   weekStartsOn,
   locale,
   sortedMonthView = true,
-  moreLabel = '{moreCount} More',
+  moreLabel = "{moreCount} More",
   showAdjacentMonths = true,
   disableMonthEventCellPress = false,
   isRTL = false,
@@ -141,7 +148,7 @@ function MonthViewInner<T>({
     // Summarise the cell for screen readers: full date, today marker, and how
     // many events it holds (the chips inside are grouped under this cell).
     const eventCount = dayEvents.length;
-    const accessibilityLabel = `${format(day, 'EEEE, d LLLL yyyy', { locale })}${isToday ? ', today' : ''}, ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+    const accessibilityLabel = `${format(day, "EEEE, d LLLL yyyy", { locale })}${isToday ? ", today" : ""}, ${eventCount} ${eventCount === 1 ? "event" : "events"}`;
 
     return (
       <TouchableOpacity
@@ -155,7 +162,7 @@ function MonthViewInner<T>({
         onPress={onPressDay ? () => onPressDay(day) : undefined}
         onLongPress={onLongPressDay ? () => onLongPressDay(day) : undefined}
         disabled={!onPressDay && !onLongPressDay}
-        accessibilityRole={onPressDay ? 'button' : undefined}
+        accessibilityRole={onPressDay ? "button" : undefined}
         accessibilityLabel={accessibilityLabel}
       >
         <View
@@ -168,7 +175,7 @@ function MonthViewInner<T>({
           ]}
         >
           <Text style={[theme.text.dateCell, { color: dateColor }]} allowFontScaling={false}>
-            {format(day, 'd')}
+            {format(day, "d")}
           </Text>
         </View>
         {dayEvents.slice(0, maxVisibleEventCount).map((event, index) => (
@@ -194,7 +201,7 @@ function MonthViewInner<T>({
             accessibilityLabel={`Show ${hiddenCount} more events`}
             allowFontScaling={false}
           >
-            {moreLabel.replace('{moreCount}', String(hiddenCount))}
+            {moreLabel.replace("{moreCount}", String(hiddenCount))}
           </Text>
         ) : null}
       </TouchableOpacity>
@@ -220,25 +227,25 @@ const styles = StyleSheet.create({
   },
   weekRow: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   dayCell: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
     paddingTop: 4,
     gap: 2,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderTopWidth: StyleSheet.hairlineWidth,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
   dateBadge: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     height: 24,
     width: 24,
   },
   monthEvent: {
-    width: '92%',
+    width: "92%",
   },
   moreLabel: {
     marginTop: 2,

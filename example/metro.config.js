@@ -1,8 +1,8 @@
-const path = require('path');
-const { getDefaultConfig } = require('expo/metro-config');
+const path = require("path");
+const { getDefaultConfig } = require("expo/metro-config");
 
-const root = path.resolve(__dirname, '..');
-const pkg = require('../package.json');
+const root = path.resolve(__dirname, "..");
+const pkg = require("../package.json");
 
 const config = getDefaultConfig(__dirname);
 
@@ -16,11 +16,15 @@ config.watchFolders = [root];
 // the app at startup ("ExceptionsManager should be set up after React DevTools",
 // "[runtime not ready]: TypeError: property is not writable"). Block the
 // library's node_modules so every import falls back to the example's single copy.
-const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const libNodeModules = new RegExp(`^${escapeRegExp(path.join(root, 'node_modules') + path.sep)}`);
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const libNodeModules = new RegExp(`^${escapeRegExp(path.join(root, "node_modules") + path.sep)}`);
 const existingBlockList = config.resolver.blockList;
 config.resolver.blockList = [
-  ...(Array.isArray(existingBlockList) ? existingBlockList : existingBlockList ? [existingBlockList] : []),
+  ...(Array.isArray(existingBlockList)
+    ? existingBlockList
+    : existingBlockList
+      ? [existingBlockList]
+      : []),
   libNodeModules,
 ];
 
@@ -28,12 +32,10 @@ config.resolver.blockList = [
 // dependency (from the example's node_modules) so React/Reanimated aren't
 // duplicated across the example and the linked library.
 const peers = Object.keys(pkg.peerDependencies ?? {});
-config.resolver.nodeModulesPaths = [path.resolve(__dirname, 'node_modules')];
+config.resolver.nodeModulesPaths = [path.resolve(__dirname, "node_modules")];
 config.resolver.extraNodeModules = {
   [pkg.name]: root,
-  ...Object.fromEntries(
-    peers.map((name) => [name, path.resolve(__dirname, 'node_modules', name)]),
-  ),
+  ...Object.fromEntries(peers.map((name) => [name, path.resolve(__dirname, "node_modules", name)])),
 };
 
 module.exports = config;

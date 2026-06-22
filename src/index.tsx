@@ -1,14 +1,14 @@
-export { Calendar, type CalendarProps } from './components/Calendar';
-export { Agenda, type AgendaProps } from './components/Agenda';
-export { MonthView, type MonthViewProps } from './components/MonthView';
-export { MonthPager, type MonthPagerProps } from './components/MonthPager';
+export { Calendar, type CalendarProps } from "./components/Calendar";
+export { Agenda, type AgendaProps } from "./components/Agenda";
+export { MonthView, type MonthViewProps } from "./components/MonthView";
+export { MonthPager, type MonthPagerProps } from "./components/MonthPager";
 export {
   TimeGrid,
   type TimeGridProps,
   type HourRenderer,
   DEFAULT_HOUR_HEIGHT,
-} from './components/TimeGrid';
-export { DefaultEvent } from './components/DefaultEvent';
+} from "./components/TimeGrid";
+export { DefaultEvent } from "./components/DefaultEvent";
 export {
   type CalendarTheme,
   type PartialCalendarTheme,
@@ -16,7 +16,7 @@ export {
   mergeTheme,
   CalendarThemeProvider,
   useCalendarTheme,
-} from './theme';
+} from "./theme";
 export type {
   CalendarEvent,
   CalendarMode,
@@ -26,12 +26,12 @@ export type {
   RenderEventArgs,
   TimeGridMode,
   WeekStartsOn,
-} from './types';
+} from "./types";
 export {
   getWeekDays,
   getIsToday,
   isWeekend,
   isSameCalendarDay,
   minutesIntoDay,
-} from './utils/dates';
-export { layoutDayEvents, isAllDayEvent, type PositionedEvent } from './utils/layout';
+} from "./utils/dates";
+export { layoutDayEvents, isAllDayEvent, type PositionedEvent } from "./utils/layout";

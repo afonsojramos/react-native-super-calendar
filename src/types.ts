@@ -1,11 +1,11 @@
-import type { ComponentType } from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
-import type { SharedValue } from 'react-native-reanimated';
+import type { ComponentType } from "react";
+import type { StyleProp, ViewStyle } from "react-native";
+import type { SharedValue } from "react-native-reanimated";
 
-export type CalendarMode = 'day' | '3days' | 'week' | 'custom' | 'month' | 'schedule';
+export type CalendarMode = "day" | "3days" | "week" | "custom" | "month" | "schedule";
 
 /** The time-grid modes (day-column views, excluding month and schedule). */
-export type TimeGridMode = Exclude<CalendarMode, 'month' | 'schedule'>;
+export type TimeGridMode = Exclude<CalendarMode, "month" | "schedule">;
 
 /**
  * The minimal shape every calendar event must have. Layout (positioning,

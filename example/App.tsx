@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { Calendar, type CalendarEvent, type CalendarMode } from 'react-native-bigger-calendar';
+import { useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { Calendar, type CalendarEvent, type CalendarMode } from "react-native-bigger-calendar";
 
-type EventMeta = { id: string; kind: 'lecture' | 'lab' | 'exam' };
+type EventMeta = { id: string; kind: "lecture" | "lab" | "exam" };
 
-const MODES: CalendarMode[] = ['month', 'week', '3days', 'day', 'schedule'];
+const MODES: CalendarMode[] = ["month", "week", "3days", "day", "schedule"];
 
 // Events anchored to "today" so the demo is always populated.
 function buildEvents(): CalendarEvent<EventMeta>[] {
@@ -19,19 +19,26 @@ function buildEvents(): CalendarEvent<EventMeta>[] {
     return d;
   };
   return [
-    { id: '1', kind: 'lecture', title: 'Contract Law', start: at(0, 9), end: at(0, 10, 30) },
-    { id: '2', kind: 'lab', title: 'Research Skills', start: at(0, 11), end: at(0, 12) },
-    { id: '3', kind: 'lecture', title: 'Tort Law', start: at(1, 13), end: at(1, 15) },
-    { id: '4', kind: 'exam', title: 'Mid-term Exam', start: at(2, 9), end: at(2, 12) },
+    { id: "1", kind: "lecture", title: "Contract Law", start: at(0, 9), end: at(0, 10, 30) },
+    { id: "2", kind: "lab", title: "Research Skills", start: at(0, 11), end: at(0, 12) },
+    { id: "3", kind: "lecture", title: "Tort Law", start: at(1, 13), end: at(1, 15) },
+    { id: "4", kind: "exam", title: "Mid-term Exam", start: at(2, 9), end: at(2, 12) },
     // A multi-day event: renders on every day it spans, clipped per day.
-    { id: '5', kind: 'lecture', title: 'Residential', start: at(3, 18), end: at(5, 12) },
+    { id: "5", kind: "lecture", title: "Residential", start: at(3, 18), end: at(5, 12) },
     // An all-day event: renders in the lane above the grid, not in the columns.
-    { id: '6', kind: 'lecture', title: 'Reading Week', start: at(0, 0), end: at(1, 0), allDay: true },
+    {
+      id: "6",
+      kind: "lecture",
+      title: "Reading Week",
+      start: at(0, 0),
+      end: at(1, 0),
+      allDay: true,
+    },
   ];
 }
 
 export default function App() {
-  const [mode, setMode] = useState<CalendarMode>('week');
+  const [mode, setMode] = useState<CalendarMode>("week");
   const [date, setDate] = useState(() => new Date());
   const events = useMemo(buildEvents, []);
 
@@ -57,13 +64,15 @@ export default function App() {
             weekStartsOn={1}
             scrollOffsetMinutes={8 * 60}
             onChangeDate={setDate}
-            onPressEvent={(event) => console.log('press event:', event.title)}
+            onPressEvent={(event) => console.log("press event:", event.title)}
             onPressDay={(day) => {
               setDate(day);
-              setMode('day');
+              setMode("day");
             }}
-            onPressMore={(dayEvents, day) => console.log('more:', day.toDateString(), dayEvents.length)}
-            onPressCell={(at) => console.log('create at:', at.toISOString())}
+            onPressMore={(dayEvents, day) =>
+              console.log("more:", day.toDateString(), dayEvents.length)
+            }
+            onPressCell={(at) => console.log("create at:", at.toISOString())}
           />
         </SafeAreaView>
       </SafeAreaProvider>
@@ -72,16 +81,16 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  tabs: { flexDirection: 'row', padding: 8, gap: 8 },
+  root: { flex: 1, backgroundColor: "#fff" },
+  tabs: { flexDirection: "row", padding: 8, gap: 8 },
   tab: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#eef0f3',
-    alignItems: 'center',
+    backgroundColor: "#eef0f3",
+    alignItems: "center",
   },
-  tabActive: { backgroundColor: '#1F6FEB' },
-  tabText: { fontWeight: '600', color: '#1A1B1E', textTransform: 'capitalize' },
-  tabTextActive: { color: '#fff' },
+  tabActive: { backgroundColor: "#1F6FEB" },
+  tabText: { fontWeight: "600", color: "#1A1B1E", textTransform: "capitalize" },
+  tabTextActive: { color: "#fff" },
 });

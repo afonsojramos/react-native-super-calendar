@@ -3,9 +3,9 @@ import {
   type LegendListRef,
   type LegendListRenderItemProps,
   type OnViewableItemsChangedInfo,
-} from '@legendapp/list/react-native';
-import { addMonths, differenceInCalendarMonths, format, type Locale, startOfMonth } from 'date-fns';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+} from "@legendapp/list/react-native";
+import { addMonths, differenceInCalendarMonths, format, type Locale, startOfMonth } from "date-fns";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   StyleSheet,
   type StyleProp,
@@ -13,11 +13,11 @@ import {
   useWindowDimensions,
   View,
   type ViewStyle,
-} from 'react-native';
-import { useCalendarTheme } from '../theme';
-import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from '../types';
-import { getWeekDays } from '../utils/dates';
-import { MonthView } from './MonthView';
+} from "react-native";
+import { useCalendarTheme } from "../theme";
+import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from "../types";
+import { getWeekDays } from "../utils/dates";
+import { MonthView } from "./MonthView";
 
 // Months rendered either side of the current page. LegendList virtualises, so
 // only a few mount at once; a wide window (5 years each way) means the user
@@ -249,7 +249,7 @@ const MonthWeekdayHeader = ({ weekDays, locale }: MonthWeekdayHeaderProps) => {
           style={[theme.text.weekday, styles.weekdayLabel, { color: theme.colors.textMuted }]}
           allowFontScaling={false}
         >
-          {format(day, 'EEE', { locale })}
+          {format(day, "EEE", { locale })}
         </Text>
       ))}
     </View>
@@ -267,11 +267,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   weekdayHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingBottom: 4,
   },
   weekdayLabel: {
     flex: 1,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });

@@ -1,5 +1,13 @@
-import { addDays, getHours, getMinutes, isSameDay, isToday, startOfDay, startOfWeek } from 'date-fns';
-import type { CalendarMode, WeekStartsOn } from '../types';
+import {
+  addDays,
+  getHours,
+  getMinutes,
+  isSameDay,
+  isToday,
+  startOfDay,
+  startOfWeek,
+} from "date-fns";
+import type { CalendarMode, WeekStartsOn } from "../types";
 
 /** The seven dates of the week containing `date`, starting on `weekStartsOn`. */
 export const getWeekDays = (date: Date, weekStartsOn: WeekStartsOn): Date[] => {
@@ -10,11 +18,11 @@ export const getWeekDays = (date: Date, weekStartsOn: WeekStartsOn): Date[] => {
 /** How many day columns a time-grid mode shows. `custom` uses `numberOfDays`. */
 export const viewDayCount = (mode: CalendarMode, numberOfDays = 1): number => {
   switch (mode) {
-    case 'week':
+    case "week":
       return 7;
-    case '3days':
+    case "3days":
       return 3;
-    case 'custom':
+    case "custom":
       return Math.max(1, Math.floor(numberOfDays));
     default:
       return 1; // 'day'
@@ -55,9 +63,9 @@ export const getViewDays = (
   weekEndsOn?: WeekStartsOn,
 ): Date[] => {
   let days: Date[];
-  if (mode === 'week') {
+  if (mode === "week") {
     days = getWeekDays(date, weekStartsOn);
-  } else if (mode === 'custom' && weekEndsOn != null) {
+  } else if (mode === "custom" && weekEndsOn != null) {
     // Mirror big-calendar: anchor to `date`'s week and take the partial-week span.
     const subject = startOfDay(date);
     const offset = weekStartsOn - subject.getDay();

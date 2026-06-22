@@ -1,5 +1,5 @@
-import { addDays, differenceInMinutes, max as maxDate, min as minDate, startOfDay } from 'date-fns';
-import type { CalendarEvent } from '../types';
+import { addDays, differenceInMinutes, max as maxDate, min as minDate, startOfDay } from "date-fns";
+import type { CalendarEvent } from "../types";
 
 const MINUTES_PER_HOUR = 60;
 // Minimum duration (in hours) a positioned event is given, so a zero/negative
@@ -35,10 +35,7 @@ type Segment<T> = {
  * on `day` (e.g. a 23:00→01:00 event renders 23:00–24:00 on the start day and
  * 00:00–01:00 on the next). Pure — safe to call per render, never per frame.
  */
-export function layoutDayEvents<T>(
-  events: CalendarEvent<T>[],
-  day: Date,
-): PositionedEvent<T>[] {
+export function layoutDayEvents<T>(events: CalendarEvent<T>[], day: Date): PositionedEvent<T>[] {
   const dayStart = startOfDay(day);
   const nextDayStart = addDays(dayStart, 1);
 
@@ -113,7 +110,7 @@ const atMidnight = (date: Date): boolean =>
  * `end` land on midnight, e.g. an iCal-style all-day event). Pure.
  */
 export function isAllDayEvent<T>(event: CalendarEvent<T>): boolean {
-  if (typeof event.allDay === 'boolean') return event.allDay;
+  if (typeof event.allDay === "boolean") return event.allDay;
   return event.end > event.start && atMidnight(event.start) && atMidnight(event.end);
 }
 

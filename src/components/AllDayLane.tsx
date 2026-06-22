@@ -1,8 +1,8 @@
-import { addDays, startOfDay } from 'date-fns';
-import { StyleSheet, View } from 'react-native';
-import { useCalendarTheme } from '../theme';
-import type { CalendarEvent, CalendarMode, EventKeyExtractor, RenderEvent } from '../types';
-import { isAllDayEvent } from '../utils/layout';
+import { addDays, startOfDay } from "date-fns";
+import { StyleSheet, View } from "react-native";
+import { useCalendarTheme } from "../theme";
+import type { CalendarEvent, CalendarMode, EventKeyExtractor, RenderEvent } from "../types";
+import { isAllDayEvent } from "../utils/layout";
 
 type AllDayLaneProps<T> = {
   days: Date[];
@@ -69,7 +69,7 @@ export function AllDayLane<T>({
 
 const styles = StyleSheet.create({
   lane: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingBottom: 2,
   },

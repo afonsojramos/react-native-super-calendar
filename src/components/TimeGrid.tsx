@@ -3,7 +3,7 @@ import {
   type LegendListRef,
   type LegendListRenderItemProps,
   type OnViewableItemsChangedInfo,
-} from '@legendapp/list/react-native';
+} from "@legendapp/list/react-native";
 import {
   addDays,
   differenceInCalendarDays,
@@ -14,8 +14,8 @@ import {
   type Locale,
   startOfDay,
   startOfWeek,
-} from 'date-fns';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+} from "date-fns";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type GestureResponderEvent,
   Pressable,
@@ -25,8 +25,8 @@ import {
   useWindowDimensions,
   View,
   type ViewStyle,
-} from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+} from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   scrollTo,
   type SharedValue,
@@ -36,8 +36,8 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
-} from 'react-native-reanimated';
-import { useCalendarTheme } from '../theme';
+} from "react-native-reanimated";
+import { useCalendarTheme } from "../theme";
 import type {
   CalendarEvent,
   CalendarMode,
@@ -45,10 +45,16 @@ import type {
   RenderEvent,
   TimeGridMode,
   WeekStartsOn,
-} from '../types';
-import { getIsToday, getViewDays, isSameCalendarDay, isWeekend, viewDayCount } from '../utils/dates';
-import { layoutDayEvents, type PositionedEvent } from '../utils/layout';
-import { AllDayLane } from './AllDayLane';
+} from "../types";
+import {
+  getIsToday,
+  getViewDays,
+  isSameCalendarDay,
+  isWeekend,
+  viewDayCount,
+} from "../utils/dates";
+import { layoutDayEvents, type PositionedEvent } from "../utils/layout";
+import { AllDayLane } from "./AllDayLane";
 
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
@@ -89,7 +95,7 @@ function useNow(enabled: boolean): Date {
 // "13" in 24h, or "1 PM" in 12h. Midnight/noon read as 12 AM / 12 PM.
 function formatHourLabel(hour: number, ampm: boolean): string {
   if (!ampm) return String(hour);
-  const period = hour < 12 ? 'AM' : 'PM';
+  const period = hour < 12 ? "AM" : "PM";
   const hour12 = hour % 12 === 0 ? 12 : hour % 12;
   return `${hour12} ${period}`;
 }
@@ -214,7 +220,13 @@ type TimeslotLineProps = {
 };
 
 // A faint divider inside an hour row, marking a sub-hour slot (e.g. half hours).
-const TimeslotLine = ({ hour, minHour, fraction, cellHeight, hourColumnWidth }: TimeslotLineProps) => {
+const TimeslotLine = ({
+  hour,
+  minHour,
+  fraction,
+  cellHeight,
+  hourColumnWidth,
+}: TimeslotLineProps) => {
   const theme = useCalendarTheme();
   const animatedStyle = useAnimatedStyle(
     () => ({ top: (hour - minHour + fraction) * cellHeight.value }),
@@ -222,7 +234,11 @@ const TimeslotLine = ({ hour, minHour, fraction, cellHeight, hourColumnWidth }: 
   );
   return (
     <Animated.View
-      style={[styles.timeslotLine, { left: hourColumnWidth, backgroundColor: theme.colors.gridLine }, animatedStyle]}
+      style={[
+        styles.timeslotLine,
+        { left: hourColumnWidth, backgroundColor: theme.colors.gridLine },
+        animatedStyle,
+      ]}
       pointerEvents="none"
     />
   );
@@ -357,10 +373,7 @@ function TimetablePageInner<T>({
   const dayWidth = (width - hourColumnWidth) / days.length;
   const dayLeft = (dayIndex: number) => hourColumnWidth + dayIndex * dayWidth;
 
-  const dayLayouts = useMemo(
-    () => days.map((day) => layoutDayEvents(events, day)),
-    [days, events],
-  );
+  const dayLayouts = useMemo(() => days.map((day) => layoutDayEvents(events, day)), [days, events]);
 
   // Map a tap on empty grid space back to the date+time it represents. Reads the
   // live row height on the JS thread to convert the touch Y into minutes.
@@ -544,9 +557,7 @@ function TimetablePageInner<T>({
             {dayLayouts.flatMap((layout, dayIndex) =>
               layout
                 // Skip events that fall entirely outside the [minHour, maxHour) window.
-                .filter(
-                  (p) => p.startHours < maxHour && p.startHours + p.durationHours > minHour,
-                )
+                .filter((p) => p.startHours < maxHour && p.startHours + p.durationHours > minHour)
                 .map((positioned, eventIndex) => {
                   const columnWidth = dayWidth / positioned.columns;
                   return (
@@ -685,7 +696,7 @@ function TimeGridInner<T>({
   swipeEnabled = true,
   showVerticalScrollIndicator = true,
   verticalScrollEnabled = true,
-  weekNumberPrefix = 'W',
+  weekNumberPrefix = "W",
   hourComponent,
   activeDate,
   resetPageOnPressCell = false,
@@ -715,7 +726,7 @@ function TimeGridInner<T>({
   const [measured, setMeasured] = useState(false);
   // Week-anchored modes page by a full week and align pages to the week start:
   // `week`, and `custom` when a `weekEndsOn` defines a partial-week span.
-  const weekAnchored = mode === 'week' || (mode === 'custom' && weekEndsOn != null);
+  const weekAnchored = mode === "week" || (mode === "custom" && weekEndsOn != null);
   // Days advanced per page: a full week when week-anchored, else the column count.
   const step = weekAnchored ? 7 : viewDayCount(mode, numberOfDays);
   // Shared vertical scroll offset so every mounted page stays aligned. Seeded
@@ -733,8 +744,7 @@ function TimeGridInner<T>({
   // (day or week start). The array never shifts as the date changes.
   const [anchorDate] = useState(date);
   const anchor = useMemo(
-    () =>
-      weekAnchored ? startOfWeek(anchorDate, { weekStartsOn }) : startOfDay(anchorDate),
+    () => (weekAnchored ? startOfWeek(anchorDate, { weekStartsOn }) : startOfDay(anchorDate)),
     [weekAnchored, anchorDate, weekStartsOn],
   );
   const pageDates = useMemo(
@@ -746,8 +756,7 @@ function TimeGridInner<T>({
   );
   const indexOfDate = useCallback(
     (target: Date) => {
-      const aligned =
-        weekAnchored ? startOfWeek(target, { weekStartsOn }) : startOfDay(target);
+      const aligned = weekAnchored ? startOfWeek(target, { weekStartsOn }) : startOfDay(target);
       // Floor so an arbitrary date lands on the page whose range contains it
       // (exact for day/week, where dates are already page-aligned).
       return Math.floor(differenceInCalendarDays(aligned, anchor) / step) + PAGE_WINDOW;
@@ -764,7 +773,14 @@ function TimeGridInner<T>({
   // columns below and a swipe never flashes another day's label.
   const headerDays = useMemo(
     () =>
-      getViewDays(mode, pageDates[activeIndex] ?? date, weekStartsOn, numberOfDays, isRTL, weekEndsOn),
+      getViewDays(
+        mode,
+        pageDates[activeIndex] ?? date,
+        weekStartsOn,
+        numberOfDays,
+        isRTL,
+        weekEndsOn,
+      ),
     [mode, pageDates, activeIndex, date, weekStartsOn, numberOfDays, isRTL, weekEndsOn],
   );
 
@@ -905,7 +921,7 @@ function TimeGridInner<T>({
           // Remount only on the seed→measured transition (see `measured`), not on
           // every height change, so a day↔week header-height difference resizes the
           // items in place instead of remounting and blanking the page.
-          key={measured ? 'grid' : 'grid-seed'}
+          key={measured ? "grid" : "grid-seed"}
           ref={listRef}
           style={styles.pagerList}
           data={pageDates}
@@ -950,7 +966,7 @@ const DefaultHeader = ({
   width,
   hourColumnWidth,
   showWeekNumber,
-  weekNumberPrefix = 'W',
+  weekNumberPrefix = "W",
   locale,
   activeDate,
   onPressDateHeader,
@@ -1000,14 +1016,14 @@ const DayHeader = ({ day, mode, width, locale, activeDate, onPressDateHeader }: 
   const isToday = getIsToday(day);
   // Highlight the chosen `activeDate` when supplied, else the real today.
   const isHighlighted = activeDate ? isSameCalendarDay(day, activeDate) : isToday;
-  const badgeSize = mode === 'day' ? 44 : 32;
+  const badgeSize = mode === "day" ? 44 : 32;
 
   return (
     <Pressable
-      style={[styles.dayHeader, { width, gap: mode === 'day' ? 4 : 2 }]}
+      style={[styles.dayHeader, { width, gap: mode === "day" ? 4 : 2 }]}
       onPress={onPressDateHeader ? () => onPressDateHeader(day) : undefined}
       disabled={!onPressDateHeader}
-      accessibilityRole={onPressDateHeader ? 'button' : undefined}
+      accessibilityRole={onPressDateHeader ? "button" : undefined}
     >
       <View
         style={[
@@ -1030,7 +1046,7 @@ const DayHeader = ({ day, mode, width, locale, activeDate, onPressDateHeader }: 
         </Text>
       </View>
       <Text style={[theme.text.weekday, { color: theme.colors.text }]} allowFontScaling={false}>
-        {format(day, 'EEE', { locale })}
+        {format(day, "EEE", { locale })}
       </Text>
     </Pressable>
   );
@@ -1047,67 +1063,67 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingBottom: 8,
   },
   weekNumberGutter: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
   dayHeader: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   dayHeaderBadge: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   content: {
-    width: '100%',
-    position: 'relative',
+    width: "100%",
+    position: "relative",
   },
   cellPressLayer: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     bottom: 0,
     right: 0,
   },
   weekendColumn: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
   },
   daySeparator: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     width: StyleSheet.hairlineWidth,
   },
   hourRow: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
   },
   hourLabel: {
     marginTop: -HOUR_LABEL_NUDGE,
-    textAlign: 'center',
+    textAlign: "center",
   },
   hourLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
   },
   timeslotLine: {
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     height: StyleSheet.hairlineWidth,
     opacity: 0.5,
   },
   eventBox: {
-    position: 'absolute',
-    overflow: 'hidden',
+    position: "absolute",
+    overflow: "hidden",
   },
   nowIndicator: {
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     height: 2,
   },

@@ -1,7 +1,7 @@
-import { format } from 'date-fns';
-import { StyleSheet, Text, TouchableOpacity } from 'react-native';
-import { useCalendarTheme } from '../theme';
-import type { RenderEventArgs } from '../types';
+import { format } from "date-fns";
+import { StyleSheet, Text, TouchableOpacity } from "react-native";
+import { useCalendarTheme } from "../theme";
+import type { RenderEventArgs } from "../types";
 
 /**
  * The built-in event renderer: a filled, rounded box showing the event title
@@ -19,8 +19,8 @@ export function DefaultEvent<T>({
   onLongPress,
 }: RenderEventArgs<T>) {
   const theme = useCalendarTheme();
-  const timeFormat = ampm ? 'h:mm a' : 'HH:mm';
-  const shouldShowTime = mode !== 'month' && !isAllDay && showTime;
+  const timeFormat = ampm ? "h:mm a" : "HH:mm";
+  const shouldShowTime = mode !== "month" && !isAllDay && showTime;
 
   return (
     <TouchableOpacity
@@ -39,7 +39,7 @@ export function DefaultEvent<T>({
       {event.title ? (
         <Text
           style={[theme.text.eventTitle, { color: theme.colors.eventText }]}
-          numberOfLines={mode === 'day' ? undefined : 1}
+          numberOfLines={mode === "day" ? undefined : 1}
           ellipsizeMode="tail"
           allowFontScaling={false}
         >
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingVertical: 2,
     paddingHorizontal: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   time: {
     fontSize: 11,

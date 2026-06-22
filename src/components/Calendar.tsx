@@ -6,11 +6,11 @@ import {
   startOfDay,
   startOfMonth,
   startOfWeek,
-} from 'date-fns';
-import { useCallback, useMemo } from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
-import { useSharedValue } from 'react-native-reanimated';
-import { CalendarThemeProvider, mergeTheme, type PartialCalendarTheme } from '../theme';
+} from "date-fns";
+import { useCallback, useMemo } from "react";
+import type { StyleProp, ViewStyle } from "react-native";
+import { useSharedValue } from "react-native-reanimated";
+import { CalendarThemeProvider, mergeTheme, type PartialCalendarTheme } from "../theme";
 import type {
   CalendarEvent,
   CalendarMode,
@@ -18,12 +18,12 @@ import type {
   RenderEvent,
   RenderEventArgs,
   WeekStartsOn,
-} from '../types';
-import { getViewDays } from '../utils/dates';
-import { Agenda } from './Agenda';
-import { DefaultEvent } from './DefaultEvent';
-import { MonthPager } from './MonthPager';
-import { DEFAULT_HOUR_HEIGHT, type HourRenderer, TimeGrid } from './TimeGrid';
+} from "../types";
+import { getViewDays } from "../utils/dates";
+import { Agenda } from "./Agenda";
+import { DefaultEvent } from "./DefaultEvent";
+import { MonthPager } from "./MonthPager";
+import { DEFAULT_HOUR_HEIGHT, type HourRenderer, TimeGrid } from "./TimeGrid";
 
 export type CalendarProps<T> = {
   events: CalendarEvent<T>[];
@@ -146,7 +146,7 @@ export type CalendarProps<T> = {
 // list mutations. Supply your own `keyExtractor` returning a real id when events
 // can share an identical start/end/title.
 const defaultKeyExtractor: EventKeyExtractor<unknown> = (event) =>
-  `${event.start.toISOString()}|${event.end.toISOString()}|${event.title ?? ''}`;
+  `${event.start.toISOString()}|${event.end.toISOString()}|${event.title ?? ""}`;
 
 // The [start, end] of the dates a given mode shows around `date`. Month spans the
 // padded grid (whole weeks); time-grid modes span their day columns.
@@ -157,7 +157,7 @@ function visibleRange(
   numberOfDays: number,
   weekEndsOn?: WeekStartsOn,
 ): [Date, Date] {
-  if (mode === 'month') {
+  if (mode === "month") {
     return [
       startOfWeek(startOfMonth(date), { weekStartsOn }),
       endOfWeek(endOfMonth(date), { weekStartsOn }),
@@ -262,14 +262,14 @@ export function Calendar<T>({
     const Base = renderEvent;
     return function StyledEvent(props: RenderEventArgs<T>) {
       const cellStyle =
-        typeof eventCellStyle === 'function' ? eventCellStyle(props.event) : eventCellStyle;
+        typeof eventCellStyle === "function" ? eventCellStyle(props.event) : eventCellStyle;
       return <Base {...props} cellStyle={cellStyle} ampm={ampm} showTime={showTime} />;
     };
   }, [renderEvent, eventCellStyle, ampm, showTime]);
 
   return (
     <CalendarThemeProvider value={mergedTheme}>
-      {mode === 'month' ? (
+      {mode === "month" ? (
         <MonthPager
           date={date}
           events={events}
@@ -296,7 +296,7 @@ export function Calendar<T>({
           freeSwipe={freeSwipe}
           swipeEnabled={swipeEnabled}
         />
-      ) : mode === 'schedule' ? (
+      ) : mode === "schedule" ? (
         <Agenda
           events={events}
           locale={locale}

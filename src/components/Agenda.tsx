@@ -1,10 +1,10 @@
-import { LegendList, type LegendListRenderItemProps } from '@legendapp/list/react-native';
-import { format, isSameDay, type Locale, startOfDay } from 'date-fns';
-import { type ComponentType, useCallback, useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { useCalendarTheme } from '../theme';
-import type { CalendarEvent, EventKeyExtractor, RenderEvent } from '../types';
-import { getIsToday } from '../utils/dates';
+import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react-native";
+import { format, isSameDay, type Locale, startOfDay } from "date-fns";
+import { type ComponentType, useCallback, useMemo } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { useCalendarTheme } from "../theme";
+import type { CalendarEvent, EventKeyExtractor, RenderEvent } from "../types";
+import { getIsToday } from "../utils/dates";
 
 export type AgendaProps<T> = {
   events: CalendarEvent<T>[];
@@ -21,8 +21,8 @@ export type AgendaProps<T> = {
 };
 
 type Row<T> =
-  | { kind: 'header'; date: Date; key: string }
-  | { kind: 'event'; event: CalendarEvent<T>; index: number; key: string };
+  | { kind: "header"; date: Date; key: string }
+  | { kind: "event"; event: CalendarEvent<T>; index: number; key: string };
 
 /**
  * A vertical, day-grouped list of events (no time grid). Events are sorted by
@@ -50,9 +50,9 @@ export function Agenda<T>({
     sorted.forEach((event, index) => {
       if (!currentDay || !isSameDay(event.start, currentDay)) {
         currentDay = startOfDay(event.start);
-        out.push({ kind: 'header', date: currentDay, key: `h-${currentDay.toISOString()}` });
+        out.push({ kind: "header", date: currentDay, key: `h-${currentDay.toISOString()}` });
       }
-      out.push({ kind: 'event', event, index, key: `e-${keyExtractor(event, index)}` });
+      out.push({ kind: "event", event, index, key: `e-${keyExtractor(event, index)}` });
     });
     return out;
   }, [events, keyExtractor]);
@@ -60,10 +60,8 @@ export function Agenda<T>({
   const keyExtractorRow = useCallback((row: Row<T>) => row.key, []);
   const renderItem = useCallback(
     ({ item }: LegendListRenderItemProps<Row<T>>) => {
-      if (item.kind === 'header') {
-        const isHighlighted = activeDate
-          ? isSameDay(item.date, activeDate)
-          : getIsToday(item.date);
+      if (item.kind === "header") {
+        const isHighlighted = activeDate ? isSameDay(item.date, activeDate) : getIsToday(item.date);
         return (
           <Text
             style={[
@@ -72,9 +70,9 @@ export function Agenda<T>({
               { color: isHighlighted ? theme.colors.todayBackground : theme.colors.textMuted },
             ]}
             onPress={onPressDay ? () => onPressDay(item.date) : undefined}
-            accessibilityRole={onPressDay ? 'button' : 'header'}
+            accessibilityRole={onPressDay ? "button" : "header"}
           >
-            {format(item.date, 'EEEE, d LLLL', { locale })}
+            {format(item.date, "EEEE, d LLLL", { locale })}
           </Text>
         );
       }
@@ -100,9 +98,7 @@ export function Agenda<T>({
       renderItem={renderItem}
       // The public prop is data-agnostic; LegendList types the separator by row.
       ItemSeparatorComponent={
-        (itemSeparatorComponent ?? undefined) as
-          | ComponentType<{ leadingItem: Row<T> }>
-          | undefined
+        (itemSeparatorComponent ?? undefined) as ComponentType<{ leadingItem: Row<T> }> | undefined
       }
       recycleItems={false}
     />

@@ -1,5 +1,5 @@
-import { createContext, useContext } from 'react';
-import type { TextStyle } from 'react-native';
+import { createContext, useContext } from "react";
+import type { TextStyle } from "react-native";
 
 /**
  * The full set of colours, text styles and metrics the calendar paints with.
@@ -49,24 +49,24 @@ export interface CalendarTheme {
 
 export const defaultTheme: CalendarTheme = {
   colors: {
-    gridLine: '#E2E4E9',
-    weekendBackground: '#F6F7F9',
-    todayBackground: '#1F6FEB',
-    todayText: '#FFFFFF',
-    nowIndicator: '#E5484D',
-    text: '#1A1B1E',
-    textMuted: '#6B7280',
-    textDisabled: '#B5B9C0',
-    eventBackground: '#DCE7FF',
-    eventText: '#1A1B1E',
+    gridLine: "#E2E4E9",
+    weekendBackground: "#F6F7F9",
+    todayBackground: "#1F6FEB",
+    todayText: "#FFFFFF",
+    nowIndicator: "#E5484D",
+    text: "#1A1B1E",
+    textMuted: "#6B7280",
+    textDisabled: "#B5B9C0",
+    eventBackground: "#DCE7FF",
+    eventText: "#1A1B1E",
   },
   text: {
-    dayNumber: { fontSize: 22, fontWeight: '700' },
-    weekday: { fontSize: 13, fontWeight: '700' },
-    dateCell: { fontSize: 13, fontWeight: '700' },
+    dayNumber: { fontSize: 22, fontWeight: "700" },
+    weekday: { fontSize: 13, fontWeight: "700" },
+    dateCell: { fontSize: 13, fontWeight: "700" },
     hourLabel: { fontSize: 12 },
-    more: { fontSize: 11, fontWeight: '700' },
-    eventTitle: { fontSize: 12, fontWeight: '700' },
+    more: { fontSize: 11, fontWeight: "700" },
+    eventTitle: { fontSize: 12, fontWeight: "700" },
   },
   todayBadgeRadius: 999,
 };
@@ -82,8 +82,8 @@ export function mergeTheme(theme?: PartialCalendarTheme): CalendarTheme {
 }
 
 export type PartialCalendarTheme = {
-  colors?: Partial<CalendarTheme['colors']>;
-  text?: Partial<CalendarTheme['text']>;
+  colors?: Partial<CalendarTheme["colors"]>;
+  text?: Partial<CalendarTheme["text"]>;
   todayBadgeRadius?: number;
 };
 

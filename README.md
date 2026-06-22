@@ -73,23 +73,23 @@ plugin, `GestureHandlerRootView` at the root of your app).
 ## Usage
 
 ```tsx
-import { useState } from 'react';
-import { Calendar, type CalendarEvent } from 'react-native-bigger-calendar';
+import { useState } from "react";
+import { Calendar, type CalendarEvent } from "react-native-bigger-calendar";
 
 type MyEvent = { id: string; color: string };
 
 const events: CalendarEvent<MyEvent>[] = [
   {
-    id: '1',
-    color: '#1F6FEB',
-    title: 'Lecture',
+    id: "1",
+    color: "#1F6FEB",
+    title: "Lecture",
     start: new Date(2026, 5, 19, 10, 0),
     end: new Date(2026, 5, 19, 11, 30),
   },
 ];
 
 export function MyCalendar() {
-  const [mode, setMode] = useState<'month' | 'week' | 'day'>('week');
+  const [mode, setMode] = useState<"month" | "week" | "day">("week");
   const [date, setDate] = useState(new Date());
 
   return (
@@ -102,7 +102,7 @@ export function MyCalendar() {
       onPressEvent={(event) => console.log(event.id)}
       onPressDay={(day) => {
         setDate(day);
-        setMode('day');
+        setMode("day");
       }}
     />
   );
@@ -118,14 +118,14 @@ Reanimated shared value tracking the live pixel height of the box (driven by
 pinch-zoom), so you can reveal detail progressively without re-rendering:
 
 ```tsx
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { Pressable, Text } from 'react-native';
-import type { RenderEventArgs } from 'react-native-bigger-calendar';
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import { Pressable, Text } from "react-native";
+import type { RenderEventArgs } from "react-native-bigger-calendar";
 
 // Define the component once (don't inline it, or it remounts every render).
 function MyEvent({ event, boxHeight, onPress }: RenderEventArgs<MyEvent>) {
   const detailStyle = useAnimatedStyle(() => ({
-    display: (boxHeight?.value ?? Infinity) >= 84 ? 'flex' : 'none',
+    display: (boxHeight?.value ?? Infinity) >= 84 ? "flex" : "none",
   }));
   return (
     <Pressable style={{ flex: 1, backgroundColor: event.color }} onPress={onPress}>
@@ -146,8 +146,8 @@ function MyEvent({ event, boxHeight, onPress }: RenderEventArgs<MyEvent>) {
 <Calendar
   // ...
   theme={{
-    colors: { todayBackground: '#E5484D', nowIndicator: '#E5484D' },
-    text: { dayNumber: { fontSize: 24, fontWeight: '800' } },
+    colors: { todayBackground: "#E5484D", nowIndicator: "#E5484D" },
+    text: { dayNumber: { fontSize: 24, fontWeight: "800" } },
   }}
 />
 ```
@@ -169,7 +169,7 @@ Pass a date-fns [`Locale`](https://date-fns.org/docs/I18n) to localize weekday a
 date labels:
 
 ```tsx
-import { fr } from 'date-fns/locale';
+import { fr } from "date-fns/locale";
 
 <Calendar /* ... */ locale={fr} weekStartsOn={1} />;
 ```
@@ -180,7 +180,7 @@ paging follows the system scroll direction — so enable React Native's
 `I18nManager` alongside it for full right-to-left behaviour.
 
 ```tsx
-<Calendar /* ... */ isRTL locale={ar} weekStartsOn={6} />;
+<Calendar /* ... */ isRTL locale={ar} weekStartsOn={6} />
 ```
 
 ### Week/day grid options
@@ -189,9 +189,9 @@ paging follows the system scroll direction — so enable React Native's
 <Calendar
   mode="week"
   // ...
-  minHour={7}            // window the grid to 07:00–21:00
+  minHour={7} // window the grid to 07:00–21:00
   maxHour={21}
-  ampm                   // 12-hour hour labels ("7 AM")
+  ampm // 12-hour hour labels ("7 AM")
   onPressCell={(date) => createEventAt(date)} // tap empty space -> date+time
 />
 ```
@@ -216,14 +216,14 @@ paging follows the system scroll direction — so enable React Native's
 `<Calendar>` is the batteries-included entry point. The building blocks it wraps
 are also exported for advanced layouts:
 
-| Export | Description |
-| --- | --- |
-| `Calendar` | Top-level component; switches between month/week/day. |
-| `MonthView` | A single month grid. |
-| `MonthPager` | Horizontally-paged, virtualized months. |
-| `TimeGrid` | Paged, pinch-zoomable week/day time-grid. |
-| `DefaultEvent` | The built-in event renderer. |
-| `useCalendarTheme` | Read the active theme inside a custom renderer. |
+| Export             | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `Calendar`         | Top-level component; switches between month/week/day. |
+| `MonthView`        | A single month grid.                                  |
+| `MonthPager`       | Horizontally-paged, virtualized months.               |
+| `TimeGrid`         | Paged, pinch-zoomable week/day time-grid.             |
+| `DefaultEvent`     | The built-in event renderer.                          |
+| `useCalendarTheme` | Read the active theme inside a custom renderer.       |
 
 ## Notes & limitations
 
