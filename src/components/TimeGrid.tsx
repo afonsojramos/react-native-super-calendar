@@ -7,8 +7,10 @@ import {
 import {
   addDays,
   differenceInCalendarDays,
+  format,
   getHours,
   getMinutes,
+  type Locale,
   startOfDay,
   startOfWeek,
 } from 'date-fns';
@@ -512,7 +514,7 @@ export type TimeGridProps<T> = {
   minHourHeight?: number;
   maxHourHeight?: number;
   showNowIndicator?: boolean;
-  locale?: string;
+  locale?: Locale;
   freeSwipe?: boolean;
   onPressEvent: (event: CalendarEvent<T>) => void;
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
@@ -743,7 +745,7 @@ type DefaultHeaderProps = {
   mode: CalendarMode;
   width: number;
   hourColumnWidth: number;
-  locale?: string;
+  locale?: Locale;
 };
 
 const DefaultHeader = ({ days, mode, width, hourColumnWidth, locale }: DefaultHeaderProps) => {
@@ -763,7 +765,7 @@ type DayHeaderProps = {
   day: Date;
   mode: CalendarMode;
   width: number;
-  locale?: string;
+  locale?: Locale;
 };
 
 const DayHeader = ({ day, mode, width, locale }: DayHeaderProps) => {
@@ -796,7 +798,7 @@ const DayHeader = ({ day, mode, width, locale }: DayHeaderProps) => {
         </Text>
       </View>
       <Text style={[theme.text.weekday, { color: theme.colors.text }]} allowFontScaling={false}>
-        {day.toLocaleDateString(locale, { weekday: 'short' })}
+        {format(day, 'EEE', { locale })}
       </Text>
     </View>
   );

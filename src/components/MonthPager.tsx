@@ -4,7 +4,7 @@ import {
   type LegendListRenderItemProps,
   type OnViewableItemsChangedInfo,
 } from '@legendapp/list/react-native';
-import { addMonths, differenceInCalendarMonths, startOfMonth } from 'date-fns';
+import { addMonths, differenceInCalendarMonths, type Locale, startOfMonth } from 'date-fns';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from '../types';
@@ -24,6 +24,7 @@ export type MonthPagerProps<T> = {
   events: CalendarEvent<T>[];
   maxVisibleEventCount: number;
   weekStartsOn: WeekStartsOn;
+  locale?: Locale;
   renderEvent: RenderEvent<T>;
   keyExtractor: EventKeyExtractor<T>;
   onPressDay?: (date: Date) => void;
@@ -40,6 +41,7 @@ function MonthPagerInner<T>({
   events,
   maxVisibleEventCount,
   weekStartsOn,
+  locale,
   renderEvent,
   keyExtractor,
   onPressDay,
@@ -106,6 +108,7 @@ function MonthPagerInner<T>({
           events={events}
           maxVisibleEventCount={maxVisibleEventCount}
           weekStartsOn={weekStartsOn}
+          locale={locale}
           renderEvent={renderEvent}
           keyExtractor={keyExtractor}
           onPressDay={onPressDay}
@@ -122,6 +125,7 @@ function MonthPagerInner<T>({
       events,
       maxVisibleEventCount,
       weekStartsOn,
+      locale,
       renderEvent,
       keyExtractor,
       onPressDay,

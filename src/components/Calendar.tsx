@@ -1,3 +1,4 @@
+import type { Locale } from 'date-fns';
 import { useMemo } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
 import { CalendarThemeProvider, mergeTheme, type PartialCalendarTheme } from '../theme';
@@ -59,8 +60,8 @@ export type CalendarProps<T> = {
   scrollOffsetMinutes?: number;
   /** Show the current-time line on the week/day grid. Default true. */
   showNowIndicator?: boolean;
-  /** BCP-47 locale for weekday labels. Defaults to the device locale. */
-  locale?: string;
+  /** A date-fns `Locale` for weekday/date labels. Defaults to English. */
+  locale?: Locale;
   /**
    * Allow a fling to carry across several pages before snapping. Default false:
    * one day/week/month per swipe.
@@ -120,6 +121,7 @@ export function Calendar<T>({
           events={events}
           maxVisibleEventCount={maxVisibleEventCount}
           weekStartsOn={weekStartsOn}
+          locale={locale}
           renderEvent={renderEvent}
           keyExtractor={keyExtractor}
           onPressDay={onPressDay}

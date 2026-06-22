@@ -149,6 +149,17 @@ See `CalendarTheme` for the full set of tokens. Anything you omit falls back to
 `numberOfDays` (e.g. `mode="custom" numberOfDays={5}` for a work-week). Day/3-day/
 custom views page by their column count; `week` pages by the calendar week.
 
+### Localization
+
+Pass a date-fns [`Locale`](https://date-fns.org/docs/I18n) to localize weekday and
+date labels:
+
+```tsx
+import { fr } from 'date-fns/locale';
+
+<Calendar /* ... */ locale={fr} weekStartsOn={1} />;
+```
+
 ### Week/day grid options
 
 ```tsx

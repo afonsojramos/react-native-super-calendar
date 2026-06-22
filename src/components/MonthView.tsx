@@ -3,6 +3,7 @@ import {
   endOfMonth,
   endOfWeek,
   format,
+  type Locale,
   isSameMonth,
   startOfDay,
   startOfMonth,
@@ -28,6 +29,7 @@ export type MonthViewProps<T> = {
   events: CalendarEvent<T>[];
   maxVisibleEventCount: number;
   weekStartsOn: WeekStartsOn;
+  locale?: Locale;
   renderEvent: RenderEvent<T>;
   keyExtractor: EventKeyExtractor<T>;
   onPressDay?: (date: Date) => void;
@@ -42,6 +44,7 @@ function MonthViewInner<T>({
   events,
   maxVisibleEventCount,
   weekStartsOn,
+  locale,
   renderEvent,
   keyExtractor,
   onPressDay,
@@ -89,7 +92,7 @@ function MonthViewInner<T>({
     // Summarise the cell for screen readers: full date, today marker, and how
     // many events it holds (the chips inside are grouped under this cell).
     const eventCount = dayEvents.length;
-    const accessibilityLabel = `${format(day, 'EEEE, d LLLL yyyy')}${isToday ? ', today' : ''}, ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+    const accessibilityLabel = `${format(day, 'EEEE, d LLLL yyyy', { locale })}${isToday ? ', today' : ''}, ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
 
     return (
       <TouchableOpacity
