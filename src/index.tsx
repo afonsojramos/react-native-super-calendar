@@ -13,6 +13,7 @@ export {
   type CalendarTheme,
   type PartialCalendarTheme,
   defaultTheme,
+  darkTheme,
   mergeTheme,
   CalendarThemeProvider,
   useCalendarTheme,

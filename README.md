@@ -170,6 +170,17 @@ The built-in renderer hard-clips a title that overflows its box. Pass
 See `CalendarTheme` for the full set of tokens. Anything you omit falls back to
 `defaultTheme`.
 
+For dark mode, pass the built-in `darkTheme` (switch on the system scheme with
+`useColorScheme()`):
+
+```tsx
+import { Calendar, darkTheme, defaultTheme } from "react-native-bigger-calendar";
+import { useColorScheme } from "react-native";
+
+const scheme = useColorScheme();
+<Calendar /* ... */ theme={scheme === "dark" ? darkTheme : defaultTheme} />;
+```
+
 ### Modes
 
 `mode` is one of `month`, `week`, `day`, `3days`, `custom`, or `schedule`. For

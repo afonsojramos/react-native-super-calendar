@@ -71,6 +71,28 @@ export const defaultTheme: CalendarTheme = {
   todayBadgeRadius: 999,
 };
 
+/**
+ * A ready-made dark palette. Pass it straight to `<Calendar theme={darkTheme} />`,
+ * or switch on the system scheme with React Native's `useColorScheme()`. Shares
+ * {@link defaultTheme}'s typography and metrics; only the colours change.
+ */
+export const darkTheme: CalendarTheme = {
+  colors: {
+    gridLine: "#2A2E37",
+    weekendBackground: "#15171C",
+    todayBackground: "#1F6FEB",
+    todayText: "#FFFFFF",
+    nowIndicator: "#E5484D",
+    text: "#ECEDEE",
+    textMuted: "#9BA1A6",
+    textDisabled: "#4B4F58",
+    eventBackground: "#243B53",
+    eventText: "#EAF2FF",
+  },
+  text: defaultTheme.text,
+  todayBadgeRadius: defaultTheme.todayBadgeRadius,
+};
+
 /** Deep-merge a partial theme over {@link defaultTheme}. */
 export function mergeTheme(theme?: PartialCalendarTheme): CalendarTheme {
   if (!theme) return defaultTheme;

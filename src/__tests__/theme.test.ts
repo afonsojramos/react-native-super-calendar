@@ -1,4 +1,21 @@
-import { defaultTheme, mergeTheme } from "../theme";
+import { darkTheme, defaultTheme, mergeTheme } from "../theme";
+
+describe("darkTheme", () => {
+  it("defines every colour the default theme does", () => {
+    expect(Object.keys(darkTheme.colors).sort()).toEqual(Object.keys(defaultTheme.colors).sort());
+  });
+
+  it("reuses the default typography and metrics", () => {
+    expect(darkTheme.text).toBe(defaultTheme.text);
+    expect(darkTheme.todayBadgeRadius).toBe(defaultTheme.todayBadgeRadius);
+  });
+
+  it("can be partially overridden via mergeTheme", () => {
+    const merged = mergeTheme({ colors: darkTheme.colors });
+    expect(merged.colors.text).toBe(darkTheme.colors.text);
+    expect(merged.text).toEqual(defaultTheme.text);
+  });
+});
 
 describe("mergeTheme", () => {
   it("returns the default theme when given nothing", () => {
