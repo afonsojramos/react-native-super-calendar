@@ -2,6 +2,8 @@
 
 A generic, themeable **month / week / day** calendar for React Native.
 
+![Month, week, 3-day, day and schedule views of react-native-bigger-calendar](./.github/assets/preview.png)
+
 - 📆 Month grid plus day / 3-day / week / custom-N time-grids
 - 🤏 Pinch-to-zoom on the week/day grid (UI thread, no re-renders)
 - ♾️ Virtualized, snap-paging months/weeks/days via [`@legendapp/list`](https://legendapp.com/open-source/list/)
@@ -139,6 +141,9 @@ function MyEvent({ event, boxHeight, onPress }: RenderEventArgs<MyEvent>) {
 
 <Calendar /* ... */ renderEvent={MyEvent} />;
 ```
+
+The built-in renderer hard-clips a title that overflows its box. Pass
+`ellipsizeTitle` to `<Calendar>` for a trailing ellipsis (…) instead.
 
 ### Theming
 
