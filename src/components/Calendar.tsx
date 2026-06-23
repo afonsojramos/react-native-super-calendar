@@ -114,6 +114,8 @@ export type CalendarProps<T> = {
   ampm?: boolean;
   /** Show the time range in the built-in event renderer (day/week/schedule). Default true. */
   showTime?: boolean;
+  /** Add a trailing ellipsis (…) when an event title overflows in the built-in renderer; otherwise the text is clipped. Default false. */
+  ellipsizeTitle?: boolean;
   /** Initial vertical scroll, in minutes from midnight (week/day). */
   scrollOffsetMinutes?: number;
   /** Show the current-time line on the week/day grid. Default true. */
@@ -214,6 +216,7 @@ export function Calendar<T>({
   maxHour,
   ampm,
   showTime,
+  ellipsizeTitle,
   scrollOffsetMinutes,
   showNowIndicator,
   locale,
@@ -254,18 +257,27 @@ export function Calendar<T>({
     [onChangeDate, onChangeDateRange, mode, weekStartsOn, numberOfDays, weekEndsOn],
   );
 
-  // Inject `eventCellStyle`, `ampm` and `showTime` into the renderer once, so
-  // every view gets them for free without threading the props through each
-  // component. Skip the wrapper entirely when none are set.
+  // Inject `eventCellStyle`, `ampm`, `showTime` and `ellipsizeTitle` into the
+  // renderer once, so every view gets them for free without threading the props
+  // through each component. Skip the wrapper entirely when none are set.
   const resolvedRenderEvent = useMemo<RenderEvent<T>>(() => {
-    if (eventCellStyle == null && ampm == null && showTime == null) return renderEvent;
+    if (eventCellStyle == null && ampm == null && showTime == null && ellipsizeTitle == null)
+      return renderEvent;
     const Base = renderEvent;
     return function StyledEvent(props: RenderEventArgs<T>) {
       const cellStyle =
         typeof eventCellStyle === "function" ? eventCellStyle(props.event) : eventCellStyle;
-      return <Base {...props} cellStyle={cellStyle} ampm={ampm} showTime={showTime} />;
+      return (
+        <Base
+          {...props}
+          cellStyle={cellStyle}
+          ampm={ampm}
+          showTime={showTime}
+          ellipsizeTitle={ellipsizeTitle}
+        />
+      );
     };
-  }, [renderEvent, eventCellStyle, ampm, showTime]);
+  }, [renderEvent, eventCellStyle, ampm, showTime, ellipsizeTitle]);
 
   return (
     <CalendarThemeProvider value={mergedTheme}>

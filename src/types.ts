@@ -56,6 +56,8 @@ export type RenderEventArgs<T = unknown> = {
   ampm?: boolean;
   /** Show the time range in the built-in renderer (day/week/schedule). Default true. */
   showTime?: boolean;
+  /** Add a trailing ellipsis (…) when a clipped title overflows in the built-in renderer; otherwise the text is hard-clipped. Default false. */
+  ellipsizeTitle?: boolean;
   /** Per-event style resolved from `eventCellStyle`; the built-in renderer merges it onto the box. */
   cellStyle?: StyleProp<ViewStyle>;
   onPress: () => void;
