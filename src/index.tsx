@@ -23,11 +23,14 @@ export type {
   CalendarMode,
   EventKeyExtractor,
   ICalendarEvent,
+  RecurrenceFrequency,
+  RecurrenceRule,
   RenderEvent,
   RenderEventArgs,
   TimeGridMode,
   WeekStartsOn,
 } from "./types";
+export { expandRecurringEvents } from "./utils/recurrence";
 export {
   getWeekDays,
   getIsToday,

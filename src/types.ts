@@ -25,6 +25,31 @@ export interface ICalendarEvent {
   allDay?: boolean;
   /** Ignore taps/long-presses on this event (the built-in renderer also dims it). */
   disabled?: boolean;
+  /**
+   * Repeat rule. Pass the event to `expandRecurringEvents(events, start, end)` to
+   * materialise its occurrences within a range; the calendar itself doesn't
+   * expand recurrences.
+   */
+  recurrence?: RecurrenceRule;
+}
+
+/** How often a recurring event repeats. */
+export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly";
+
+/** A simple, RRULE-inspired repeat rule expanded by `expandRecurringEvents`. */
+export interface RecurrenceRule {
+  freq: RecurrenceFrequency;
+  /** Repeat every N periods. Default 1. */
+  interval?: number;
+  /** Stop after this many occurrences (including the first). */
+  count?: number;
+  /** Stop on/after this date (inclusive). */
+  until?: Date;
+  /**
+   * For `weekly`: the weekdays to repeat on (0 = Sunday … 6 = Saturday), keeping
+   * the event's time of day. Omit to repeat on the start date's own weekday.
+   */
+  weekdays?: WeekStartsOn[];
 }
 
 /**

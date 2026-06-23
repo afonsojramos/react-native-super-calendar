@@ -155,6 +155,33 @@ function MyEvent({ event, boxHeight, onPress }: RenderEventArgs<MyEvent>) {
 The built-in renderer hard-clips a title that overflows its box. Pass
 `ellipsizeTitle` to `<Calendar>` for a trailing ellipsis (…) instead.
 
+### Recurring events
+
+Give an event a `recurrence` rule and expand it into concrete occurrences for the
+range you're showing with `expandRecurringEvents`. The calendar doesn't expand
+recurrences itself, so you control the window (and can memoize it):
+
+```tsx
+import { Calendar, expandRecurringEvents } from "react-native-bigger-calendar";
+
+const events = [
+  // Every weekday standup, 20 occurrences:
+  {
+    title: "Standup",
+    start,
+    end,
+    recurrence: { freq: "weekly", weekdays: [1, 2, 3, 4, 5], count: 20 },
+  },
+];
+
+const visible = expandRecurringEvents(events, rangeStart, rangeEnd);
+<Calendar /* ... */ events={visible} />;
+```
+
+Rules support `freq` (`daily`/`weekly`/`monthly`/`yearly`), `interval`, `count`,
+`until`, and `weekdays` (for `weekly`). Each occurrence keeps the original
+duration and fields; non-recurring events pass through unchanged.
+
 ### Theming
 
 ```tsx
