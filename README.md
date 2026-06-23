@@ -242,11 +242,13 @@ support web). Add the web peers to your app:
 npx expo install react-dom react-native-web @expo/metro-runtime
 ```
 
-All views render and mode-switching works (verified via Expo web). Caveats: the
-touch gestures — pinch-to-zoom and swipe paging — aren't fully verified on web,
-and the list library logs a couple of harmless `scrollEnabled`/`pagingEnabled`
-DOM-prop warnings. The runnable [`example/`](./example) builds with `expo start
---web` if you want to try it.
+All views render and mode-switching works (verified via Expo web). Since
+horizontal swipe paging doesn't translate to web, it's disabled there and
+replaced with **←** / **→** arrow-key paging (previous/next page). Remaining
+caveats: pinch-to-zoom (a touch gesture) isn't verified on web, and the list
+library logs a couple of harmless `scrollEnabled`/`pagingEnabled` DOM-prop
+warnings. The runnable [`example/`](./example) builds with `expo start --web` if
+you want to try it.
 
 ## Components
 
