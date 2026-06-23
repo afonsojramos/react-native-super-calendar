@@ -1,6 +1,8 @@
 import {
   isTimeVisibleAtHeight,
   MIN_BOX_HEIGHT_FOR_TIME,
+  monthEventCapacity,
+  monthVisibleCount,
   shouldShowEventTime,
   titleEllipsizeMode,
   titleNumberOfLines,
@@ -75,5 +77,37 @@ describe("isTimeVisibleAtHeight", () => {
     expect(isTimeVisibleAtHeight(MIN_BOX_HEIGHT_FOR_TIME, "week")).toBe(true);
     expect(isTimeVisibleAtHeight(100, "week")).toBe(true);
     expect(isTimeVisibleAtHeight(64, "3days")).toBe(true);
+  });
+});
+
+describe("monthEventCapacity", () => {
+  it("fits more chips when no overflow label is needed", () => {
+    // 100px / 22px chip = 4 chips; reserving a 17px label leaves room for 3.
+    expect(monthEventCapacity(100, 22, 17)).toEqual({ full: 4, withMore: 3 });
+  });
+
+  it("clamps to zero when nothing fits", () => {
+    expect(monthEventCapacity(10, 22, 17)).toEqual({ full: 0, withMore: 0 });
+  });
+
+  it("guards against a non-positive chip height", () => {
+    expect(monthEventCapacity(100, 0, 17)).toEqual({ full: 0, withMore: 0 });
+  });
+});
+
+describe("monthVisibleCount", () => {
+  const capacity = { full: 4, withMore: 3 };
+
+  it("shows every event when they all fit", () => {
+    expect(monthVisibleCount(3, capacity)).toBe(3);
+    expect(monthVisibleCount(4, capacity)).toBe(4);
+  });
+
+  it("reserves the overflow label when events exceed the full count", () => {
+    expect(monthVisibleCount(5, capacity)).toBe(3);
+  });
+
+  it("always shows at least one chip when overflowing a tiny cell", () => {
+    expect(monthVisibleCount(5, { full: 0, withMore: 0 })).toBe(1);
   });
 });
