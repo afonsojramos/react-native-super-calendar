@@ -132,6 +132,11 @@ export default function App() {
               events={events}
               weekStartsOn={1}
               scrollOffsetMinutes={8 * 60}
+              businessHours={(date) => {
+                const weekday = date.getDay();
+                if (weekday === 0 || weekday === 6) return null; // weekends closed
+                return { start: 9, end: 17 };
+              }}
               renderEvent={EventContextMenu}
               onChangeDate={setDate}
               onDragEvent={(event, start, end) => {
