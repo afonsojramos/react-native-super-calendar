@@ -140,6 +140,12 @@ export default function App() {
               onDragStart={() => {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               }}
+              onCreateEvent={(start, end) =>
+                setEvents((prev) => {
+                  const nextId = String(Math.max(0, ...prev.map((e) => Number(e.id) || 0)) + 1);
+                  return [...prev, { id: nextId, kind: "work", title: "✨ New event", start, end }];
+                })
+              }
               onPressEvent={(event) => console.log("press event:", event.title)}
               onPressDay={(day) => {
                 setDate(day);
