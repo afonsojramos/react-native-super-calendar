@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/afonsojramos/react-native-bigger-calendar/compare/v0.4.0...v0.5.0) (2026-06-24)
+
+
+### Features
+
+* add drag-to-create on the week/day grid ([989477e](https://github.com/afonsojramos/react-native-bigger-calendar/commit/989477e8702922fe1218679c119060f188b55f54))
+* demo drag-to-create in the example ([0d1422c](https://github.com/afonsojramos/react-native-bigger-calendar/commit/0d1422cf770ae82ddcb68571b4fa0a9110c3c490))
+* drag events horizontally to move them across days ([c11acde](https://github.com/afonsojramos/react-native-bigger-calendar/commit/c11acde8f8ebc23e0ea8d69034b49ed6d7983d77))
+* enable drag-to-create on web via a click-drag threshold ([b3e0b3e](https://github.com/afonsojramos/react-native-bigger-calendar/commit/b3e0b3e614d842338c9c6004f9126ec2e8771213))
+* enable drag-to-move and resize on web via a click-drag threshold ([6e193aa](https://github.com/afonsojramos/react-native-bigger-calendar/commit/6e193aa03bc35126bad6ddb509f53f41e6cc7cb2))
+
+
+### Bug Fixes
+
+* declare the css module so the example typechecks on web ([e412736](https://github.com/afonsojramos/react-native-bigger-calendar/commit/e4127366cd5c1a8f693613cf02ecec05a4e29f91))
+* fire onPressCell on web taps and let Escape cancel an event sweep ([8df2eba](https://github.com/afonsojramos/react-native-bigger-calendar/commit/8df2eba57c20f2c0401b8bf689fafff85049baf1))
+
 ## [0.4.0](https://github.com/afonsojramos/react-native-bigger-calendar/compare/v0.3.0...v0.4.0) (2026-06-24)
 
 
