@@ -1105,6 +1105,10 @@ function TimeGridInner<T>({
           ref={listRef}
           style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
           data={pageDates}
+          // Pages are keyed by date, so the list won't repaint when `events`
+          // changes (a drag/menu commit, or any external setEvents). Feed it as
+          // extraData so the visible page re-renders the moved event in place.
+          extraData={events}
           horizontal
           recycleItems={false}
           keyExtractor={keyExtractorList}
