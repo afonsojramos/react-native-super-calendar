@@ -1,4 +1,4 @@
-import { resolveDraggedBounds, shiftMinutes, snapDeltaMinutes } from "../drag";
+import { cellRangeFromDrag, resolveDraggedBounds, shiftMinutes, snapDeltaMinutes } from "../drag";
 
 describe("snapDeltaMinutes", () => {
   // 64px per hour grid, snapping to 15-minute steps.
@@ -86,5 +86,52 @@ describe("resolveDraggedBounds", () => {
   it("never rejects a pure move, however large", () => {
     // Both edges shift together, so the duration is preserved.
     expect(resolveDraggedBounds(start, end, -600, -600, 15)).not.toBeNull();
+  });
+});
+
+describe("cellRangeFromDrag", () => {
+  // A grid starting at midnight (minHour 0), 64px per hour, 15-minute snap.
+  const day = new Date(2026, 0, 1);
+
+  it("maps a downward drag to a snapped start/end on the day", () => {
+    // 9:00 (576px) down to 10:30 (672px).
+    const range = cellRangeFromDrag(day, 576, 672, 64, 0, 15);
+    expect(range?.start.getHours()).toBe(9);
+    expect(range?.start.getMinutes()).toBe(0);
+    expect(range?.end.getHours()).toBe(10);
+    expect(range?.end.getMinutes()).toBe(30);
+  });
+
+  it("orders an upward drag so start is always before end", () => {
+    const range = cellRangeFromDrag(day, 672, 576, 64, 0, 15);
+    expect(range?.start.getHours()).toBe(9);
+    expect(range?.end.getHours()).toBe(10);
+    expect(range?.end.getMinutes()).toBe(30);
+  });
+
+  it("snaps both ends to the step", () => {
+    // 9:05 (581px) to 9:50 (629px) snaps to 9:00–9:45.
+    const range = cellRangeFromDrag(day, 581, 629, 64, 0, 15);
+    expect(range?.start.getMinutes()).toBe(0);
+    expect(range?.end.getMinutes()).toBe(45);
+  });
+
+  it("widens a stationary press to one step", () => {
+    const range = cellRangeFromDrag(day, 576, 576, 64, 0, 15);
+    expect(range?.start.getHours()).toBe(9);
+    expect(range?.end.getHours()).toBe(9);
+    expect(range?.end.getMinutes()).toBe(15);
+  });
+
+  it("accounts for a non-zero minHour offset", () => {
+    // minHour 8: y=0 is the 8:00 line, so 64px down is 9:00.
+    const range = cellRangeFromDrag(day, 0, 64, 64, 8, 15);
+    expect(range?.start.getHours()).toBe(8);
+    expect(range?.end.getHours()).toBe(9);
+  });
+
+  it("returns null for a degenerate grid", () => {
+    expect(cellRangeFromDrag(day, 100, 200, 0, 0, 15)).toBeNull();
+    expect(cellRangeFromDrag(day, 100, 200, 64, 0, 0)).toBeNull();
   });
 });
