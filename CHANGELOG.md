@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.0](https://github.com/afonsojramos/react-native-bigger-calendar/compare/v0.3.0...v0.4.0) (2026-06-24)
+
+
+### Features
+
+* add a built-in darkTheme preset ([818b45e](https://github.com/afonsojramos/react-native-bigger-calendar/commit/818b45e8dc0b4436c9cd45dd423867f09d7522fe))
+* add expandRecurringEvents for recurring events ([61dd45e](https://github.com/afonsojramos/react-native-bigger-calendar/commit/61dd45edb0a1e7a5d2395850d63cb9d9fb28178f))
+* add timezone-aware display helpers ([af28464](https://github.com/afonsojramos/react-native-bigger-calendar/commit/af28464682a19b4dac65680bb489fd71265decf7))
+* demo a web right-click context menu and event drag in the example ([c545b4a](https://github.com/afonsojramos/react-native-bigger-calendar/commit/c545b4a340e637a5df252ef46a629064d4fe1c53))
+* drag to move and resize events on the week/day grid ([4cd2eaf](https://github.com/afonsojramos/react-native-bigger-calendar/commit/4cd2eaf7698bcec659d1e9bdd4a3a083896c3b4d))
+* enrich event accessibility labels with time and state ([bf921e5](https://github.com/afonsojramos/react-native-bigger-calendar/commit/bf921e5c73fe34706007cbc91f6ad6965f5663b4))
+* fire onDragStart when an event drag begins ([421c922](https://github.com/afonsojramos/react-native-bigger-calendar/commit/421c92231d8fc8539d3f80f410914820d7dea21a))
+* page the calendar with arrow keys on web, disabling swipe there ([04bbc3a](https://github.com/afonsojramos/react-native-bigger-calendar/commit/04bbc3a12f5ced2f3f92a4f49d5959d934a8121e))
+* zoom the web grid with ctrl/cmd + scroll ([dae87f8](https://github.com/afonsojramos/react-native-bigger-calendar/commit/dae87f8be0260967a4bcd5e84434330a848e9868))
+
+
+### Bug Fixes
+
+* hold the drag offset until the committed move re-renders ([65abb86](https://github.com/afonsojramos/react-native-bigger-calendar/commit/65abb862d17b17d313bed28950c9a3a15b6687d0))
+* render month day cells as cells, not nested buttons, on web ([f5fc80a](https://github.com/afonsojramos/react-native-bigger-calendar/commit/f5fc80aa11ff97adad374e65b4137d1af81faa8f))
+* repaint the week/day grid when events change ([308f4ea](https://github.com/afonsojramos/react-native-bigger-calendar/commit/308f4ea091425b3d8d42923460333371106d043c))
+* silence web console warnings from pointerEvents and leaked scroll props ([7d7fb39](https://github.com/afonsojramos/react-native-bigger-calendar/commit/7d7fb399bab641d5e47730ce8255c2c71efa1655))
+
 ## [0.3.0](https://github.com/afonsojramos/react-native-bigger-calendar/compare/v0.2.2...v0.3.0) (2026-06-23)
 
 
