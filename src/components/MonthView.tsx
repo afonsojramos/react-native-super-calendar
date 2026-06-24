@@ -22,7 +22,12 @@ import {
 } from "react-native";
 import { useCalendarTheme } from "../theme";
 import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from "../types";
-import { type DateRange, isRangeEndpoint, isWithinDateRange } from "../utils/dateRange";
+import {
+  type DateRange,
+  isRangeEndpoint,
+  isWithinDateRange,
+  useCalendarSelection,
+} from "../utils/dateRange";
 import { getIsToday, isSameCalendarDay, isWeekend } from "../utils/dates";
 import { monthEventCapacity, monthVisibleCount } from "../utils/eventDisplay";
 import { eventDayKeys, isAllDayEvent } from "../utils/layout";
@@ -101,8 +106,8 @@ function MonthViewInner<T>({
   isRTL = false,
   showSixWeeks = false,
   activeDate,
-  selectedDates,
-  selectedRange,
+  selectedDates: selectedDatesProp,
+  selectedRange: selectedRangeProp,
   calendarCellStyle,
   renderEvent,
   keyExtractor,
@@ -113,6 +118,11 @@ function MonthViewInner<T>({
   onPressMore,
 }: MonthViewProps<T>) {
   const theme = useCalendarTheme();
+  // Selection comes from context (so cached pages still repaint), but explicit
+  // props win for direct/standalone use of MonthView.
+  const selection = useCalendarSelection();
+  const selectedDates = selectedDatesProp ?? selection.selectedDates;
+  const selectedRange = selectedRangeProp ?? selection.selectedRange;
   const RenderEventComponent = renderEvent;
   // Measured grid height, used to auto-fit the event chips per cell.
   const [gridHeight, setGridHeight] = useState(0);

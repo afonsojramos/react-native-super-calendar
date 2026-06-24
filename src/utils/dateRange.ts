@@ -1,5 +1,5 @@
 import { isAfter, isBefore, startOfDay } from "date-fns";
-import { useCallback, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { isSameCalendarDay } from "./dates";
 
 /** A selected span. `end` is `null` while only the first endpoint has been picked. */
@@ -63,6 +63,23 @@ export function isWithinDateRange(date: Date, range: DateRange | null): boolean 
   const b = startOfDay(range.end).getTime();
   return day >= Math.min(a, b) && day <= Math.max(a, b);
 }
+
+/** The current month-view selection, shared with day cells via context. */
+export interface CalendarSelection {
+  selectedDates?: Date[];
+  selectedRange?: DateRange;
+}
+
+const CalendarSelectionContext = createContext<CalendarSelection>({});
+
+/**
+ * Provides the active selection to the month grid. Day cells read it via
+ * {@link useCalendarSelection} so they repaint on selection changes even when
+ * the virtualized list has cached (and so won't re-render) their page.
+ */
+export const CalendarSelectionProvider = CalendarSelectionContext.Provider;
+
+export const useCalendarSelection = () => useContext(CalendarSelectionContext);
 
 /** Options for {@link useDateRange}. */
 export interface UseDateRangeOptions extends DateSelectionConstraints {
