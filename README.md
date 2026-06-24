@@ -221,7 +221,8 @@ space: **long-press and drag** on native, **click-drag** on web. The handler
 receives the snapped `start`/`end` on release (a stationary press yields a
 one-step range) — create your own event in response. On native it supersedes
 `onLongPressCell` on empty space; on web, dragging empty space creates instead of
-scrolling (use the wheel to scroll), matching desktop calendars.
+scrolling (use the wheel to scroll), matching desktop calendars, and **Escape**
+cancels an in-progress sweep before it commits.
 
 ```tsx
 <Calendar
