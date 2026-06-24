@@ -65,6 +65,14 @@ import { AllDayLane } from "./AllDayLane";
 // with the arrow keys instead.
 const isWeb = Platform.OS === "web";
 
+// Minimal DOM shapes for the web-only Escape listener (the library targets React
+// Native, so the TS "DOM" lib isn't available).
+type WebKeyEvent = { key: string };
+type WebKeyTarget = {
+  addEventListener: (type: "keydown", listener: (event: WebKeyEvent) => void) => void;
+  removeEventListener: (type: "keydown", listener: (event: WebKeyEvent) => void) => void;
+};
+
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
 // Steps rendered either side of the current page. LegendList virtualises, so
@@ -620,6 +628,9 @@ function TimetablePageInner<T>({
   const createWidth = useSharedValue(0);
   const createStartY = useSharedValue(0);
   const createDayIndex = useSharedValue(0);
+  // Set when the sweep is cancelled mid-drag (Escape on web); the gesture then
+  // bails instead of committing.
+  const createCancelled = useSharedValue(0);
 
   const commitCreate = useCallback(
     (startY: number, endY: number, dayIndex: number) => {
@@ -629,6 +640,23 @@ function TimetablePageInner<T>({
       if (range) onCreateEvent?.(range.start, range.end);
     },
     [days, heightSource, minHour, snapMinutes, onCreateEvent],
+  );
+
+  // Web taps fall through to here: react-native-web doesn't fire the background
+  // Pressable's onPress, so a click on empty space reports the cell via a Tap
+  // gesture instead. Mirrors cellDateFromTouch.
+  const tapCell = useCallback(
+    (x: number, y: number) => {
+      const dayIndex = days.length === 1 ? 0 : Math.floor(x / dayWidth);
+      const day = days[dayIndex];
+      if (!day) return;
+      const minutes = Math.round((minHour + y / heightSource.value) * MINUTES_PER_HOUR);
+      const pressed = new Date(day);
+      pressed.setHours(0, 0, 0, 0);
+      pressed.setMinutes(minutes);
+      onPressCell?.(pressed);
+    },
+    [days, dayWidth, minHour, heightSource, onPressCell],
   );
 
   const createGesture = useMemo(() => {
@@ -643,8 +671,10 @@ function TimetablePageInner<T>({
         createTop.value = event.y;
         createHeight.value = 0;
         createActive.value = 1;
+        createCancelled.value = 0;
       })
       .onUpdate((event) => {
+        if (createCancelled.value) return;
         const stepPx = (snapMinutes / MINUTES_PER_HOUR) * heightSource.value;
         const snap = (y: number) => (stepPx > 0 ? Math.round(y / stepPx) * stepPx : y);
         const startSnap = snap(createStartY.value);
@@ -653,13 +683,14 @@ function TimetablePageInner<T>({
         createHeight.value = Math.max(Math.abs(endSnap - startSnap), stepPx);
       })
       .onEnd((event) => {
+        createActive.value = 0;
+        createHeight.value = 0;
+        if (createCancelled.value) return; // Escape pressed mid-sweep
         runOnJS(commitCreate)(
           createStartY.value,
           createStartY.value + event.translationY,
           createDayIndex.value,
         );
-        createActive.value = 0;
-        createHeight.value = 0;
       });
     // Native: hold to start. Web: activate past a small vertical drag so a plain
     // tap still falls through to onPressCell.
@@ -681,7 +712,40 @@ function TimetablePageInner<T>({
     createWidth,
     createStartY,
     createDayIndex,
+    createCancelled,
   ]);
+
+  // Compose with a Tap so a plain web click reports the cell (onPressCell);
+  // Exclusive gives the drag-to-create priority, so a real drag still creates.
+  const backgroundGesture = useMemo(() => {
+    const tap =
+      isWeb && onPressCell != null
+        ? Gesture.Tap().onEnd((event) => {
+            runOnJS(tapCell)(event.x, event.y);
+          })
+        : null;
+    if (createEnabled && tap) return Gesture.Exclusive(createGesture, tap);
+    if (createEnabled) return createGesture;
+    return tap;
+  }, [createEnabled, createGesture, onPressCell, tapCell]);
+
+  // Web: Escape cancels an in-progress sweep before it commits.
+  useEffect(() => {
+    if (!isWeb || !createEnabled) return;
+    const doc = (globalThis as { document?: WebKeyTarget }).document;
+    if (!doc) return;
+    const handler = (event: WebKeyEvent) => {
+      if (event.key !== "Escape" || !createActive.value) return;
+      // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+      createCancelled.value = 1;
+      // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+      createActive.value = 0;
+      // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+      createHeight.value = 0;
+    };
+    doc.addEventListener("keydown", handler);
+    return () => doc.removeEventListener("keydown", handler);
+  }, [createEnabled, createActive, createCancelled, createHeight]);
 
   const createGhostStyle = useAnimatedStyle(() => ({
     top: createTop.value,
@@ -735,8 +799,8 @@ function TimetablePageInner<T>({
           <Animated.View style={[styles.content, fullHeightStyle]}>
             {/* Behind the events, so empty-space taps/drags create while event
                 taps still hit their box. */}
-            {createEnabled ? (
-              <GestureDetector gesture={createGesture}>{cellLayer}</GestureDetector>
+            {cellLayer && backgroundGesture ? (
+              <GestureDetector gesture={backgroundGesture}>{cellLayer}</GestureDetector>
             ) : (
               cellLayer
             )}
