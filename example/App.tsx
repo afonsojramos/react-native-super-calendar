@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -134,17 +134,27 @@ export default function App() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <SafeAreaView style={styles.root}>
-          <View style={styles.tabs}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tabsScroll}
+            contentContainerStyle={styles.tabs}
+          >
             {TABS.map((m) => (
               <Pressable
                 key={m}
                 style={[styles.tab, activeMode === m && styles.tabActive]}
                 onPress={() => setMode(m)}
               >
-                <Text style={[styles.tabText, activeMode === m && styles.tabTextActive]}>{m}</Text>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.tabText, activeMode === m && styles.tabTextActive]}
+                >
+                  {m}
+                </Text>
               </Pressable>
             ))}
-          </View>
+          </ScrollView>
           {activeMode === "picker" ? (
             <View style={styles.root}>
               <View style={styles.pickerBar}>
@@ -219,10 +229,11 @@ export default function App() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#fff" },
+  tabsScroll: { flexGrow: 0 },
   tabs: { flexDirection: "row", padding: 8, gap: 8 },
   tab: {
-    flex: 1,
     paddingVertical: 8,
+    paddingHorizontal: 18,
     borderRadius: 8,
     backgroundColor: "#eef0f3",
     alignItems: "center",
