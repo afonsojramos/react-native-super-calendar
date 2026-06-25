@@ -40,6 +40,31 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "react-native": "./src/index.tsx",
+  "exports": {
+    ".": {
+      "react-native": "./src/index.tsx",
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./picker": {
+      "react-native": "./src/picker.tsx",
+      "import": {
+        "types": "./dist/picker.d.mts",
+        "default": "./dist/picker.mjs"
+      },
+      "require": {
+        "types": "./dist/picker.d.ts",
+        "default": "./dist/picker.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -92,6 +117,14 @@
     "react-native-gesture-handler": ">=2.16",
     "react-native-reanimated": ">=4.0.0 <5",
     "react-native-worklets": ">=0.5"
+  },
+  "peerDependenciesMeta": {
+    "react-native-reanimated": {
+      "optional": true
+    },
+    "react-native-worklets": {
+      "optional": true
+    }
   },
   "packageManager": "pnpm@11.1.2"
 }
