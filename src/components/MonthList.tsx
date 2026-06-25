@@ -13,7 +13,7 @@ import {
   CalendarSelectionProvider,
   type DateRange,
 } from "../utils/dateRange";
-import { getWeekDays } from "../utils/dates";
+import { buildMonthWeeks, getWeekDays } from "../utils/dates";
 import { DefaultEvent } from "./DefaultEvent";
 import { MonthView } from "./MonthView";
 
@@ -21,8 +21,11 @@ import { MonthView } from "./MonthView";
 // few mount at once; a wide window means the user effectively never runs out.
 const PAGE_WINDOW = 60;
 const VIEWABILITY = { itemVisiblePercentThreshold: 60 };
-// Default fixed height per month block (title + six week rows). Override via prop.
-const DEFAULT_MONTH_HEIGHT = 360;
+// Each month block is the title plus its own week rows. Sizing per month (rather
+// than a fixed height) keeps row heights consistent and avoids a blank padding
+// row, since months show only their own days (no adjacent-month fill).
+const MONTH_HEADER_HEIGHT = 44;
+const DEFAULT_WEEK_ROW_HEIGHT = 56;
 
 // Stable empty events array, so a picker (no events) doesn't churn memoised props.
 const NO_EVENTS: CalendarEvent<unknown>[] = [];
@@ -36,12 +39,13 @@ export type MonthListProps<T> = {
   /** Events to render in the grids. Omit for an events-free date picker. */
   events?: CalendarEvent<T>[];
   weekStartsOn: WeekStartsOn;
-  /** Fixed height of each month block (px). Default 360. */
-  monthHeight?: number;
+  /** Height of each week row (px). The month block sizes to its row count. Default 56. */
+  weekRowHeight?: number;
   maxVisibleEventCount?: number;
   locale?: Locale;
   sortedMonthView?: boolean;
   moreLabel?: string;
+  /** Show dimmed adjacent-month days. Default false (each month shows only its own days). */
   showAdjacentMonths?: boolean;
   disableMonthEventCellPress?: boolean;
   isRTL?: boolean;
@@ -71,12 +75,12 @@ function MonthListInner<T>({
   date,
   events = NO_EVENTS as CalendarEvent<T>[],
   weekStartsOn,
-  monthHeight = DEFAULT_MONTH_HEIGHT,
+  weekRowHeight = DEFAULT_WEEK_ROW_HEIGHT,
   maxVisibleEventCount,
   locale,
   sortedMonthView,
   moreLabel,
-  showAdjacentMonths,
+  showAdjacentMonths = false,
   disableMonthEventCellPress,
   isRTL,
   activeDate,
@@ -122,7 +126,14 @@ function MonthListInner<T>({
   );
 
   const keyExtractorList = useCallback((item: Date) => item.toISOString(), []);
-  const getFixedItemSize = useCallback(() => monthHeight, [monthHeight]);
+  // Each month is as tall as its own week rows (4–6) plus the title; no padding
+  // row, since adjacent-month days aren't filled in.
+  const blockHeight = useCallback(
+    (month: Date) =>
+      MONTH_HEADER_HEIGHT + buildMonthWeeks(month, weekStartsOn).length * weekRowHeight,
+    [weekStartsOn, weekRowHeight],
+  );
+  const getFixedItemSize = useCallback((item: Date) => blockHeight(item), [blockHeight]);
 
   const handleViewableItemsChanged = useCallback(
     (info: OnViewableItemsChangedInfo<Date>) => {
@@ -134,7 +145,7 @@ function MonthListInner<T>({
 
   const renderItem = useCallback(
     ({ item }: LegendListRenderItemProps<Date>) => (
-      <View style={{ height: monthHeight }}>
+      <View style={{ height: blockHeight(item) }}>
         {renderMonthHeader ? (
           renderMonthHeader(item)
         ) : (
@@ -154,7 +165,6 @@ function MonthListInner<T>({
             showAdjacentMonths={showAdjacentMonths}
             disableMonthEventCellPress={disableMonthEventCellPress}
             isRTL={isRTL}
-            showSixWeeks
             activeDate={activeDate}
             calendarCellStyle={calendarCellStyle}
             renderEvent={renderEvent}
@@ -169,7 +179,7 @@ function MonthListInner<T>({
       </View>
     ),
     [
-      monthHeight,
+      blockHeight,
       renderMonthHeader,
       theme,
       locale,
