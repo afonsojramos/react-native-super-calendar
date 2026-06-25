@@ -17,7 +17,7 @@
 - 🤏 Zoomable week/day grid: pinch on iOS & Android, Ctrl/Cmd + scroll on web (UI thread, no re-renders)
 - ♾️ Virtualized, snap-paging months/weeks/days via [`@legendapp/list`](https://legendapp.com/open-source/list/)
 - 🧩 Bring-your-own event type (`CalendarEvent<T>`) and a `renderEvent` escape hatch
-- 🗓️ Date selection — single / multiple / range (`useDateRange`), disabled days, and a scrolling `MonthList`
+- 🗓️ Date selection (single / multiple / range via `useDateRange`), disabled days, and a scrolling `MonthList`
 - 🪝 Headless `useMonthGrid` hook to build a fully custom calendar
 - 🎨 Fully themeable, with sensible defaults (no styling library required)
 - 🌐 Runs on iOS, Android and web (web via [react-native-web](https://necolas.github.io/react-native-web/); see [Web](#web))
@@ -366,7 +366,7 @@ const { weeks, weekdays } = useMonthGrid(month, { weekStartsOn: 1, selectedRange
 ```
 
 Need it outside React (tests, exports)? Call the pure `buildMonthGrid(month,
-options)` — the hook is just a memoized wrapper. `buildMonthWeeks(month,
+options)`; the hook is just a memoized wrapper. `buildMonthWeeks(month,
 weekStartsOn)` returns the raw `Date[][]`.
 
 ### Time zones
