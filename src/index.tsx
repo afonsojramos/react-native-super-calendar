@@ -13,6 +13,7 @@ export {
   DEFAULT_HOUR_HEIGHT,
 } from "./components/TimeGrid";
 export { DefaultEvent } from "./components/DefaultEvent";
+export { DefaultMonthEvent } from "./components/DefaultMonthEvent";
 export {
   type CalendarTheme,
   type PartialCalendarTheme,
