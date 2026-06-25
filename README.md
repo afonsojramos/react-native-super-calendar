@@ -117,14 +117,34 @@ npm install react-native-super-calendar
 
 ### Peer dependencies
 
-This library relies on the following being installed in your app:
+The full calendar relies on the following being installed in your app:
 
 ```sh
-npm install react-native-reanimated react-native-gesture-handler @legendapp/list
+npm install react-native-reanimated react-native-worklets react-native-gesture-handler @legendapp/list date-fns
 ```
 
 Make sure Reanimated and Gesture Handler are set up per their own docs (Babel
 plugin, `GestureHandlerRootView` at the root of your app).
+
+### Picker only? Skip Reanimated
+
+If you only need date selection, import it from the
+`react-native-super-calendar/picker` entry point. It contains the month grid,
+selection, and the headless `useMonthGrid`, with **none of the timetable code and
+no Reanimated dependency**, so it works on every bundler (Metro included) without
+shipping the week/day grid. A picker-only app installs just:
+
+```sh
+npm install react-native-gesture-handler @legendapp/list date-fns
+```
+
+```tsx
+import { MonthList, useDateRange } from "react-native-super-calendar/picker";
+```
+
+`react-native-reanimated` and `react-native-worklets` are declared as optional
+peers, so this entry point won't pull them in. (Metro doesn't tree-shake the main
+barrel, so the subpath is what guarantees the timetable code is left out.)
 
 ## Usage
 

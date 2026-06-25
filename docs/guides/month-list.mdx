@@ -13,6 +13,12 @@ It's the home for date picking. It takes the same selection props as
 across month boundaries, which the horizontally-paged month view can't do. An
 events-free picker needs nothing but `date` and the selection wiring:
 
+<Tip>
+  For a picker-only app, import from the `react-native-super-calendar/picker` entry point. It
+  excludes the timetable views and Reanimated, so the bundle stays small and you can skip the
+  `react-native-reanimated` / `react-native-worklets` peers.
+</Tip>
+
 ```tsx
 import { MonthList, useDateRange } from "react-native-super-calendar";
 
