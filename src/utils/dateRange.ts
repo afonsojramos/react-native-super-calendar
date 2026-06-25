@@ -112,6 +112,16 @@ export function useDateRange(options: UseDateRangeOptions = {}) {
     (date: Date) => setRange((previous) => nextDateRange(previous, date, constraints)),
     [constraints],
   );
+  // Set both endpoints at once (ordered), for drag-to-select. Ignores the update
+  // if either endpoint isn't selectable.
+  const selectRange = useCallback(
+    (a: Date, b: Date) => {
+      if (!isDateSelectable(a, constraints) || !isDateSelectable(b, constraints)) return;
+      const [start, end] = a.getTime() <= b.getTime() ? [a, b] : [b, a];
+      setRange({ start: startOfDay(start), end: startOfDay(end) });
+    },
+    [constraints],
+  );
   const reset = useCallback(() => setRange(null), []);
-  return { range, onPressDate, reset, setRange };
+  return { range, onPressDate, selectRange, reset, setRange };
 }

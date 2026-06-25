@@ -11,7 +11,6 @@ import { useCallback, useMemo } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 import { CalendarThemeProvider, mergeTheme, type PartialCalendarTheme } from "../theme";
-import type { DateRange } from "../utils/dateRange";
 import type {
   CalendarEvent,
   CalendarMode,
@@ -134,6 +133,12 @@ export type CalendarProps<T> = {
   hideHours?: boolean;
   /** Sub-hour divider lines per hour on the week/day grid (e.g. 2 = half-hours). Default 1. */
   timeslots?: number;
+  /**
+   * Show the all-day lane above the week/day grid. Default true. When false the
+   * lane is never rendered, so all-day events (see `ICalendarEvent.allDay` and
+   * whole-day spans) are not shown on the time grid.
+   */
+  showAllDayEventCell?: boolean;
   /** Show the ISO week number in the week/day header gutter. Default false. */
   showWeekNumber?: boolean;
   /** Prefix for the week-number label (e.g. "W"). Default "W". */
@@ -168,18 +173,6 @@ export type CalendarProps<T> = {
   locale?: Locale;
   /** Highlight this date (header/cell/agenda) instead of the real "today". */
   activeDate?: Date;
-  /** Month mode only: mark a single day as selected. Wire `onPressDay` to update it. */
-  selectedDate?: Date | null;
-  /** Month mode only: mark several days as selected (multi-select). */
-  selectedDates?: Date[];
-  /** Month mode only: a selected span; pair with the `useDateRange` hook for range picking. */
-  selectedRange?: DateRange;
-  /** Month mode only: earliest selectable day (inclusive); earlier days render disabled. */
-  minDate?: Date;
-  /** Month mode only: latest selectable day (inclusive); later days render disabled. */
-  maxDate?: Date;
-  /** Month mode only: return true to render a day disabled (dimmed, taps ignored). */
-  isDateDisabled?: (date: Date) => boolean;
   /**
    * Lay the day columns out right-to-left (month, week/day grid and all-day lane).
    * Cosmetic only: the hour gutter stays on the left and paging still advances
@@ -196,6 +189,12 @@ export type CalendarProps<T> = {
   renderTimeGridHeader?: (days: Date[]) => React.ReactNode;
   /** Replace the weekday-label header above the month grid. Return `null` to hide it. */
   renderHeaderForMonthView?: (weekDays: Date[]) => React.ReactNode;
+  /**
+   * Month mode only: replace the default date badge in each day cell. Receives
+   * the day; return your own date label (e.g. a number with a dot or badge).
+   * Event chips and the "+N more" label still render below it.
+   */
+  renderCustomDateForMonth?: (date: Date) => React.ReactNode;
   /** Drawn between rows of the `schedule` (agenda) list. */
   itemSeparatorComponent?: React.ComponentType<unknown> | null;
 };
@@ -265,6 +264,7 @@ export function Calendar<T>({
   hourColumnWidth,
   hideHours,
   timeslots,
+  showAllDayEventCell,
   showWeekNumber,
   weekNumberPrefix,
   hourComponent,
@@ -282,16 +282,11 @@ export function Calendar<T>({
   showNowIndicator,
   locale,
   activeDate,
-  selectedDate,
-  selectedDates,
-  selectedRange,
-  minDate,
-  maxDate,
-  isDateDisabled,
   isRTL,
   freeSwipe,
   renderTimeGridHeader,
   renderHeaderForMonthView,
+  renderCustomDateForMonth,
   itemSeparatorComponent,
 }: CalendarProps<T>) {
   const mergedTheme = useMemo(() => mergeTheme(theme), [theme]);
@@ -346,13 +341,6 @@ export function Calendar<T>({
     };
   }, [renderEvent, eventCellStyle, ampm, showTime, ellipsizeTitle]);
 
-  // Fold the single-date convenience prop into the multi-select list the month
-  // view consumes, so callers can use whichever shape fits their selection mode.
-  const monthSelectedDates = useMemo(() => {
-    if (selectedDate == null) return selectedDates;
-    return selectedDates ? [...selectedDates, selectedDate] : [selectedDate];
-  }, [selectedDate, selectedDates]);
-
   return (
     <CalendarThemeProvider value={mergedTheme}>
       {mode === "month" ? (
@@ -369,12 +357,8 @@ export function Calendar<T>({
           isRTL={isRTL}
           showSixWeeks={showSixWeeks}
           activeDate={activeDate}
-          selectedDates={monthSelectedDates}
-          selectedRange={selectedRange}
-          minDate={minDate}
-          maxDate={maxDate}
-          isDateDisabled={isDateDisabled}
           renderHeaderForMonthView={renderHeaderForMonthView}
+          renderCustomDateForMonth={renderCustomDateForMonth}
           calendarCellStyle={calendarCellStyle}
           renderEvent={resolvedRenderEvent}
           keyExtractor={keyExtractor}
@@ -415,6 +399,7 @@ export function Calendar<T>({
           hourColumnWidth={hourColumnWidth}
           hideHours={hideHours}
           timeslots={timeslots}
+          showAllDayEventCell={showAllDayEventCell}
           calendarCellStyle={calendarCellStyle}
           businessHours={businessHours}
           showWeekNumber={showWeekNumber}

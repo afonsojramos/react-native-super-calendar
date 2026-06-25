@@ -17,11 +17,6 @@ import {
 } from "react-native";
 import { useCalendarTheme } from "../theme";
 import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from "../types";
-import {
-  type CalendarSelection,
-  CalendarSelectionProvider,
-  type DateRange,
-} from "../utils/dateRange";
 import { getWeekDays } from "../utils/dates";
 import { useWebPagerKeys } from "../utils/useWebPagerKeys";
 import { MonthView } from "./MonthView";
@@ -63,13 +58,10 @@ export type MonthPagerProps<T> = {
   swipeEnabled?: boolean;
   showSixWeeks?: boolean;
   activeDate?: Date;
-  selectedDates?: Date[];
-  selectedRange?: DateRange;
-  minDate?: Date;
-  maxDate?: Date;
-  isDateDisabled?: (date: Date) => boolean;
   /** Replace the weekday-label header above the month grid. Receives the week's days. */
   renderHeaderForMonthView?: (weekDays: Date[]) => React.ReactNode;
+  /** Replace the default date badge in each day cell. Receives the day. */
+  renderCustomDateForMonth?: (date: Date) => React.ReactNode;
 };
 
 function MonthPagerInner<T>({
@@ -96,12 +88,8 @@ function MonthPagerInner<T>({
   swipeEnabled = true,
   showSixWeeks = false,
   activeDate,
-  selectedDates,
-  selectedRange,
-  minDate,
-  maxDate,
-  isDateDisabled,
   renderHeaderForMonthView,
+  renderCustomDateForMonth,
 }: MonthPagerProps<T>) {
   const { width, height } = useWindowDimensions();
   const listRef = useRef<LegendListRef>(null);
@@ -167,14 +155,6 @@ function MonthPagerInner<T>({
     return isRTL ? days.reverse() : days;
   }, [anchor, weekStartsOn, isRTL]);
 
-  // Day cells read the selection from context, not props, so a cached page
-  // (LegendList keeps mounted pages with recycleItems={false}) still repaints
-  // when the selection changes. Memoised so consumers only re-render on change.
-  const selection = useMemo<CalendarSelection>(
-    () => ({ selectedDates, selectedRange, minDate, maxDate, isDateDisabled }),
-    [selectedDates, selectedRange, minDate, maxDate, isDateDisabled],
-  );
-
   const snapToIndices = useMemo(() => monthDates.map((_, index) => index), [monthDates]);
   const keyExtractorList = useCallback((item: Date) => item.toISOString(), []);
   const getFixedItemSize = useCallback(() => width, [width]);
@@ -202,6 +182,7 @@ function MonthPagerInner<T>({
           onPressEvent={onPressEvent}
           onLongPressEvent={onLongPressEvent}
           onPressMore={onPressMore}
+          renderCustomDateForMonth={renderCustomDateForMonth}
         />
       </View>
     ),
@@ -227,54 +208,53 @@ function MonthPagerInner<T>({
       onPressEvent,
       onLongPressEvent,
       onPressMore,
+      renderCustomDateForMonth,
     ],
   );
 
   return (
-    <CalendarSelectionProvider value={selection}>
-      <View style={styles.container}>
-        {renderHeaderForMonthView ? (
-          renderHeaderForMonthView(weekDays)
-        ) : (
-          <MonthWeekdayHeader weekDays={weekDays} locale={locale} />
-        )}
-        <View
-          style={styles.pager}
-          onLayout={(event) => setPageHeight(event.nativeEvent.layout.height)}
-        >
-          <LegendList
-            // Remount when the measured page height changes so the list adopts the
-            // corrected item height. Without this the list can keep the oversized
-            // initial (window-height) seed and clip the last week row.
-            key={pageHeight}
-            ref={listRef}
-            style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
-            data={monthDates}
-            horizontal
-            recycleItems={false}
-            keyExtractor={keyExtractorList}
-            getFixedItemSize={getFixedItemSize}
-            // On web LegendList ignores these RN scroll props (it leaks them to the
-            // DOM as unknown attributes), so omit them there and disable horizontal
-            // scroll via `webNoScroll`; paging is driven by the arrow keys instead.
-            // Native: paging makes each swipe hard-stop at the adjacent month, while
-            // `freeSwipe` lets momentum carry across months and snap to a boundary.
-            {...(isWeb
-              ? null
-              : {
-                  scrollEnabled: swipeEnabled,
-                  pagingEnabled: !freeSwipe,
-                  snapToIndices: freeSwipe ? snapToIndices : undefined,
-                })}
-            initialScrollIndex={activeIndex}
-            showsHorizontalScrollIndicator={false}
-            viewabilityConfig={PAGE_VIEWABILITY}
-            onViewableItemsChanged={handleViewableItemsChanged}
-            renderItem={renderItem}
-          />
-        </View>
+    <View style={styles.container}>
+      {renderHeaderForMonthView ? (
+        renderHeaderForMonthView(weekDays)
+      ) : (
+        <MonthWeekdayHeader weekDays={weekDays} locale={locale} />
+      )}
+      <View
+        style={styles.pager}
+        onLayout={(event) => setPageHeight(event.nativeEvent.layout.height)}
+      >
+        <LegendList
+          // Remount when the measured page height changes so the list adopts the
+          // corrected item height. Without this the list can keep the oversized
+          // initial (window-height) seed and clip the last week row.
+          key={pageHeight}
+          ref={listRef}
+          style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
+          data={monthDates}
+          horizontal
+          recycleItems={false}
+          keyExtractor={keyExtractorList}
+          getFixedItemSize={getFixedItemSize}
+          // On web LegendList ignores these RN scroll props (it leaks them to the
+          // DOM as unknown attributes), so omit them there and disable horizontal
+          // scroll via `webNoScroll`; paging is driven by the arrow keys instead.
+          // Native: paging makes each swipe hard-stop at the adjacent month, while
+          // `freeSwipe` lets momentum carry across months and snap to a boundary.
+          {...(isWeb
+            ? null
+            : {
+                scrollEnabled: swipeEnabled,
+                pagingEnabled: !freeSwipe,
+                snapToIndices: freeSwipe ? snapToIndices : undefined,
+              })}
+          initialScrollIndex={activeIndex}
+          showsHorizontalScrollIndicator={false}
+          viewabilityConfig={PAGE_VIEWABILITY}
+          onViewableItemsChanged={handleViewableItemsChanged}
+          renderItem={renderItem}
+        />
       </View>
-    </CalendarSelectionProvider>
+    </View>
   );
 }
 

@@ -2,6 +2,7 @@ import { format, type Locale, isSameMonth, startOfDay } from "date-fns";
 import { memo, useMemo, useState } from "react";
 import {
   type LayoutChangeEvent,
+  Platform,
   StyleSheet,
   type StyleProp,
   Text,
@@ -9,6 +10,10 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
+
+// Web drag-to-select relays cell pointer events up to MonthList; native drag is
+// driven by a list-level pan there instead.
+const isWeb = Platform.OS === "web";
 import { useCalendarTheme } from "../theme";
 import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from "../types";
 import {
@@ -60,9 +65,9 @@ export type MonthViewProps<T> = {
   showSixWeeks?: boolean;
   /** Highlight this date instead of the real "today". */
   activeDate?: Date;
-  /** Days drawn as selected (their badge uses the theme's `selected*` colours). */
+  /** Days drawn as selected — filled with the `rangeBackground` band (no badge). */
   selectedDates?: Date[];
-  /** A selected span: endpoints get the selected badge, interior days a `rangeBackground` band. */
+  /** A selected span, filled edge-to-edge with the `rangeBackground` band. */
   selectedRange?: DateRange;
   /** Earliest selectable day (inclusive); earlier days render disabled. */
   minDate?: Date;
@@ -70,6 +75,10 @@ export type MonthViewProps<T> = {
   maxDate?: Date;
   /** Return true to render a specific day disabled (dimmed, taps ignored). */
   isDateDisabled?: (date: Date) => boolean;
+  /** Web drag-to-select relay: a pointer pressed down on this day's cell. */
+  onDayPointerDown?: (date: Date) => void;
+  /** Web drag-to-select relay: a pressed pointer entered this day's cell. */
+  onDayPointerEnter?: (date: Date) => void;
   /** Per-date style merged onto the day cell. */
   calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
   renderEvent: RenderEvent<T>;
@@ -79,6 +88,11 @@ export type MonthViewProps<T> = {
   onPressEvent: (event: CalendarEvent<T>) => void;
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
   onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
+  /**
+   * Replace the default date badge in each day cell. Receives the day; return
+   * your own date label. Event chips and the "+N more" label still render below.
+   */
+  renderCustomDateForMonth?: (date: Date) => React.ReactNode;
 };
 
 function MonthViewInner<T>({
@@ -107,6 +121,9 @@ function MonthViewInner<T>({
   onPressEvent,
   onLongPressEvent,
   onPressMore,
+  renderCustomDateForMonth,
+  onDayPointerDown,
+  onDayPointerEnter,
 }: MonthViewProps<T>) {
   const theme = useCalendarTheme();
   // Selection comes from context (so cached pages still repaint), but explicit
@@ -197,15 +214,15 @@ function MonthViewInner<T>({
     const visibleCount = monthVisibleCount(dayEvents.length, capacity);
     const hiddenCount = dayEvents.length - visibleCount;
 
+    // Selection is shown as a background band over the span (no per-day badge),
+    // so selected days keep their normal number colour; today keeps its badge.
     const dateColor = isDisabled
       ? theme.colors.textDisabled
-      : isSelected
-        ? theme.colors.selectedText
-        : isHighlighted
-          ? theme.colors.todayText
-          : isCurrentMonth
-            ? theme.colors.text
-            : theme.colors.textDisabled;
+      : isHighlighted
+        ? theme.colors.todayText
+        : isCurrentMonth
+          ? theme.colors.text
+          : theme.colors.textDisabled;
 
     // Disabled days ignore taps; pass the guards through so a press never fires.
     const handlePressDay = isDisabled || !onPressDay ? undefined : () => onPressDay(day);
@@ -224,37 +241,45 @@ function MonthViewInner<T>({
           styles.dayCell,
           { borderColor: theme.colors.gridLine },
           isWeekend(day) && { backgroundColor: theme.colors.weekendBackground },
-          // Range band sits behind the cell; placed after weekend so it wins.
-          isInRange && { backgroundColor: theme.colors.rangeBackground },
+          // Selection band fills the whole span (endpoints + interior + discrete
+          // days); placed after weekend so it wins.
+          (isInRange || isSelected) && { backgroundColor: theme.colors.rangeBackground },
           calendarCellStyle?.(day),
         ]}
         onPress={handlePressDay}
         onLongPress={handleLongPressDay}
         disabled={isDisabled || (!onPressDay && !onLongPressDay)}
+        // Web drag-to-select: relay pointer down/enter so MonthList can extend a
+        // range as the pressed pointer sweeps across cells (native uses a pan).
+        {...(isWeb && !isDisabled && onDayPointerDown
+          ? {
+              onPointerDown: () => onDayPointerDown(day),
+              onPointerEnter: () => onDayPointerEnter?.(day),
+            }
+          : null)}
         // A cell, not a button — it contains the event-chip buttons, and a nested
         // <button> is invalid HTML on web. `cell` is also closer to the correct
         // semantics for a calendar day than `button`.
         role="cell"
         accessibilityLabel={accessibilityLabel}
       >
-        <View
-          style={[
-            styles.dateBadge,
-            isSelected
-              ? {
-                  backgroundColor: theme.colors.selectedBackground,
-                  borderRadius: theme.todayBadgeRadius,
-                }
-              : isHighlighted && {
-                  backgroundColor: theme.colors.todayBackground,
-                  borderRadius: theme.todayBadgeRadius,
-                },
-          ]}
-        >
-          <Text style={[theme.text.dateCell, { color: dateColor }]} allowFontScaling={false}>
-            {format(day, "d")}
-          </Text>
-        </View>
+        {renderCustomDateForMonth ? (
+          renderCustomDateForMonth(day)
+        ) : (
+          <View
+            style={[
+              styles.dateBadge,
+              isHighlighted && {
+                backgroundColor: theme.colors.todayBackground,
+                borderRadius: theme.todayBadgeRadius,
+              },
+            ]}
+          >
+            <Text style={[theme.text.dateCell, { color: dateColor }]} allowFontScaling={false}>
+              {format(day, "d")}
+            </Text>
+          </View>
+        )}
         {dayEvents.slice(0, visibleCount).map((event, index) => (
           <View key={keyExtractor(event, index)} style={styles.monthEvent}>
             <RenderEventComponent

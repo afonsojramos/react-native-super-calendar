@@ -64,3 +64,41 @@ describe("TimeGrid event updates", () => {
     expect(queryByLabelText(/Standup, 09:00 to 10:00/)).toBeNull();
   });
 });
+
+describe("TimeGrid all-day lane", () => {
+  const date = new Date(2026, 0, 6, 12, 0, 0);
+  const allDayEvent: CalendarEvent<WithId> = {
+    id: "h1",
+    start: new Date(2026, 0, 6),
+    end: new Date(2026, 0, 7),
+    title: "Holiday",
+    allDay: true,
+  };
+
+  it("renders the all-day lane by default", () => {
+    const { getByText } = render(
+      <Calendar
+        mode="day"
+        date={date}
+        events={[allDayEvent]}
+        onChangeDate={noop}
+        onPressEvent={noop}
+      />,
+    );
+    expect(getByText("Holiday")).toBeTruthy();
+  });
+
+  it("hides the lane (and its events) when showAllDayEventCell is false", () => {
+    const { queryByText } = render(
+      <Calendar
+        mode="day"
+        date={date}
+        events={[allDayEvent]}
+        showAllDayEventCell={false}
+        onChangeDate={noop}
+        onPressEvent={noop}
+      />,
+    );
+    expect(queryByText("Holiday")).toBeNull();
+  });
+});

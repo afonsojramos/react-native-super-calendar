@@ -113,7 +113,7 @@ export default function App() {
   // Range selection for the "picker" tab; onPressDate wires to month-cell taps.
   // Disallow past dates so the picker also demonstrates disabled days.
   const pickerMinDate = useMemo(() => new Date(), []);
-  const { range, onPressDate, reset } = useDateRange({ minDate: pickerMinDate });
+  const { range, onPressDate, selectRange, reset } = useDateRange({ minDate: pickerMinDate });
   // DEMO_MODE pins the view when set; otherwise the tab bar drives it.
   const activeMode: DemoTab = DEMO_MODE ?? mode;
 
@@ -174,6 +174,7 @@ export default function App() {
                 minDate={pickerMinDate}
                 onChangeVisibleMonth={setDate}
                 onPressDay={onPressDate}
+                onSelectDrag={selectRange}
               />
             </View>
           ) : activeMode === "list" ? (

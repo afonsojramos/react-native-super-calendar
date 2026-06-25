@@ -562,6 +562,7 @@ type TimetablePageProps<T> = {
   ampm: boolean;
   timeslots: number;
   isRTL: boolean;
+  showAllDayEventCell: boolean;
   showVerticalScrollIndicator: boolean;
   verticalScrollEnabled: boolean;
   hourComponent?: HourRenderer;
@@ -604,6 +605,7 @@ function TimetablePageInner<T>({
   ampm,
   timeslots,
   isRTL,
+  showAllDayEventCell,
   showVerticalScrollIndicator,
   verticalScrollEnabled,
   hourComponent,
@@ -896,17 +898,19 @@ function TimetablePageInner<T>({
 
   return (
     <View style={styles.container}>
-      <AllDayLane
-        days={days}
-        events={events}
-        mode={mode}
-        hourColumnWidth={hourColumnWidth}
-        dayWidth={dayWidth}
-        renderEvent={renderEvent}
-        keyExtractor={keyExtractor}
-        onPressEvent={onPressEvent}
-        onLongPressEvent={onLongPressEvent}
-      />
+      {showAllDayEventCell ? (
+        <AllDayLane
+          days={days}
+          events={events}
+          mode={mode}
+          hourColumnWidth={hourColumnWidth}
+          dayWidth={dayWidth}
+          renderEvent={renderEvent}
+          keyExtractor={keyExtractor}
+          onPressEvent={onPressEvent}
+          onLongPressEvent={onLongPressEvent}
+        />
+      ) : null}
       <GestureDetector gesture={zoomGesture}>
         <Animated.ScrollView
           ref={scrollRef}
@@ -1109,6 +1113,8 @@ export type TimeGridProps<T> = {
   hideHours?: boolean;
   /** Sub-hour divider lines per hour (e.g. 2 = half-hours). Default 1 (none). */
   timeslots?: number;
+  /** Show the all-day lane above the grid. Default true. */
+  showAllDayEventCell?: boolean;
   /** Per-date style merged onto each day column. */
   calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
   businessHours?: BusinessHours;
@@ -1179,6 +1185,7 @@ function TimeGridInner<T>({
   hourColumnWidth: hourColumnWidthProp = DEFAULT_HOUR_COLUMN_WIDTH,
   hideHours = false,
   timeslots = 1,
+  showAllDayEventCell = true,
   calendarCellStyle,
   businessHours,
   showWeekNumber = false,
@@ -1366,6 +1373,7 @@ function TimeGridInner<T>({
           ampm={ampm}
           timeslots={timeslots}
           isRTL={isRTL}
+          showAllDayEventCell={showAllDayEventCell}
           showVerticalScrollIndicator={showVerticalScrollIndicator}
           verticalScrollEnabled={verticalScrollEnabled}
           hourComponent={hourComponent}
@@ -1407,6 +1415,7 @@ function TimeGridInner<T>({
       ampm,
       timeslots,
       isRTL,
+      showAllDayEventCell,
       showVerticalScrollIndicator,
       verticalScrollEnabled,
       hourComponent,

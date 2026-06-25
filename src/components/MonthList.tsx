@@ -1,21 +1,43 @@
 import {
   LegendList,
+  type LegendListRef,
   type LegendListRenderItemProps,
   type OnViewableItemsChangedInfo,
 } from "@legendapp/list/react-native";
-import { addMonths, differenceInCalendarMonths, format, type Locale, startOfMonth } from "date-fns";
-import { memo, useCallback, useMemo, useState } from "react";
-import { StyleSheet, type StyleProp, Text, View, type ViewStyle } from "react-native";
+import {
+  addMonths,
+  differenceInCalendarMonths,
+  format,
+  isSameMonth,
+  type Locale,
+  startOfMonth,
+} from "date-fns";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Platform,
+  StyleSheet,
+  type StyleProp,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useCalendarTheme } from "../theme";
 import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from "../types";
 import {
   type CalendarSelection,
   CalendarSelectionProvider,
   type DateRange,
+  isDateSelectable,
 } from "../utils/dateRange";
 import { buildMonthWeeks, getWeekDays } from "../utils/dates";
 import { DefaultEvent } from "./DefaultEvent";
 import { MonthView } from "./MonthView";
+
+const isWeb = Platform.OS === "web";
 
 // Months rendered either side of the anchor. LegendList virtualises, so only a
 // few mount at once; a wide window means the user effectively never runs out.
@@ -26,6 +48,12 @@ const VIEWABILITY = { itemVisiblePercentThreshold: 60 };
 // row, since months show only their own days (no adjacent-month fill).
 const MONTH_HEADER_HEIGHT = 44;
 const DEFAULT_WEEK_ROW_HEIGHT = 56;
+// Drag-to-select: native holds to start (so a scroll/tap isn't hijacked) then
+// pans across months; nearing an edge auto-scrolls the list.
+const LONG_PRESS_MS = 250;
+const AUTOSCROLL_EDGE_PX = 64;
+const AUTOSCROLL_STEP_PX = 14;
+const AUTOSCROLL_INTERVAL_MS = 16;
 
 // Stable empty events array, so a picker (no events) doesn't churn memoised props.
 const NO_EVENTS: CalendarEvent<unknown>[] = [];
@@ -65,6 +93,12 @@ export type MonthListProps<T> = {
   onPressEvent?: (event: CalendarEvent<T>) => void;
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
   onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
+  /**
+   * Enable drag-to-select. Long-press a day and drag to sweep out a range,
+   * continuing across months (the list auto-scrolls at the edges). Fired with
+   * the ordered `[start, end]`; pair with `useDateRange`'s `selectRange`.
+   */
+  onSelectDrag?: (start: Date, end: Date) => void;
   /** Fired with the month that scrolls into view. */
   onChangeVisibleMonth?: (month: Date) => void;
   /** Replace the per-month title (default "LLLL yyyy"). */
@@ -97,10 +131,12 @@ function MonthListInner<T>({
   onPressEvent = noop,
   onLongPressEvent,
   onPressMore,
+  onSelectDrag,
   onChangeVisibleMonth,
   renderMonthHeader,
 }: MonthListProps<T>) {
   const theme = useCalendarTheme();
+  const listRef = useRef<LegendListRef>(null);
 
   // A fixed window of months anchored once, aligned to the month start.
   const [anchorDate] = useState(date);
@@ -135,6 +171,157 @@ function MonthListInner<T>({
   );
   const getFixedItemSize = useCallback((item: Date) => blockHeight(item), [blockHeight]);
 
+  // Content-Y of each month's top (prefix sums), plus the total content height,
+  // so a drag's absolute position maps to a month and day.
+  const offsets = useMemo(() => {
+    const out: number[] = [0];
+    for (let i = 0; i < monthDates.length; i++) out.push(out[i] + blockHeight(monthDates[i]));
+    return out;
+  }, [monthDates, blockHeight]);
+
+  // ---- drag-to-select -------------------------------------------------------
+  const dragStartRef = useRef<Date | null>(null);
+  const dragMovedRef = useRef(false);
+  const pointerDownRef = useRef(false); // web
+  const scrollYRef = useRef(0);
+  const viewportRef = useRef({ width: 0, height: 0 });
+  const lastPanRef = useRef({ x: 0, y: 0 }); // native, viewport-relative
+  const autoScrollRef = useRef<{ id: ReturnType<typeof setInterval>; dir: number } | null>(null);
+
+  const isSelectable = useCallback(
+    (day: Date) =>
+      (minDate == null && maxDate == null && isDateDisabled == null) ||
+      isDateSelectable(day, { minDate, maxDate, isDateDisabled }),
+    [minDate, maxDate, isDateDisabled],
+  );
+
+  // Map an absolute content position to a selectable day, or null on a title,
+  // a blanked adjacent-month cell, or a disabled day.
+  const dayAtContent = useCallback(
+    (x: number, contentY: number): Date | null => {
+      const width = viewportRef.current.width;
+      if (width <= 0) return null;
+      const clampedY = Math.min(Math.max(contentY, 0), offsets[offsets.length - 1] - 1);
+      let index = 0;
+      while (index < monthDates.length - 1 && offsets[index + 1] <= clampedY) index++;
+      const month = monthDates[index];
+      const localY = clampedY - offsets[index] - MONTH_HEADER_HEIGHT;
+      if (localY < 0) return null; // on the month title
+      const weeks = buildMonthWeeks(month, weekStartsOn);
+      const row = Math.min(weeks.length - 1, Math.max(0, Math.floor(localY / weekRowHeight)));
+      const col = Math.min(6, Math.max(0, Math.floor(x / (width / 7))));
+      const day = weeks[row]?.[col];
+      if (!day) return null;
+      if (!showAdjacentMonths && !isSameMonth(day, month)) return null;
+      return isSelectable(day) ? day : null;
+    },
+    [offsets, monthDates, weekStartsOn, weekRowHeight, showAdjacentMonths, isSelectable],
+  );
+
+  const extendTo = useCallback(
+    (day: Date | null) => {
+      const start = dragStartRef.current;
+      if (!start || !day) return;
+      if (day.getTime() !== start.getTime()) dragMovedRef.current = true;
+      onSelectDrag?.(start, day);
+    },
+    [onSelectDrag],
+  );
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollRef.current) {
+      clearInterval(autoScrollRef.current.id);
+      autoScrollRef.current = null;
+    }
+  }, []);
+
+  const startAutoScroll = useCallback(
+    (dir: number) => {
+      if (autoScrollRef.current?.dir === dir) return;
+      stopAutoScroll();
+      const max = Math.max(0, offsets[offsets.length - 1] - viewportRef.current.height);
+      const id = setInterval(() => {
+        const next = Math.min(max, Math.max(0, scrollYRef.current + dir * AUTOSCROLL_STEP_PX));
+        scrollYRef.current = next;
+        void listRef.current?.scrollToOffset({ offset: next, animated: false });
+        extendTo(dayAtContent(lastPanRef.current.x, next + lastPanRef.current.y));
+      }, AUTOSCROLL_INTERVAL_MS);
+      autoScrollRef.current = { id, dir };
+    },
+    [offsets, stopAutoScroll, extendTo, dayAtContent],
+  );
+
+  // Native: a list-level pan, so one drag spans every month.
+  const dragGesture = useMemo(() => {
+    if (!onSelectDrag) return undefined;
+    return Gesture.Pan()
+      .activateAfterLongPress(LONG_PRESS_MS)
+      .runOnJS(true)
+      .onStart((event) => {
+        lastPanRef.current = { x: event.x, y: event.y };
+        dragMovedRef.current = false;
+        dragStartRef.current = dayAtContent(event.x, scrollYRef.current + event.y);
+      })
+      .onUpdate((event) => {
+        lastPanRef.current = { x: event.x, y: event.y };
+        const height = viewportRef.current.height;
+        if (event.y < AUTOSCROLL_EDGE_PX) startAutoScroll(-1);
+        else if (height > 0 && event.y > height - AUTOSCROLL_EDGE_PX) startAutoScroll(1);
+        else stopAutoScroll();
+        extendTo(dayAtContent(event.x, scrollYRef.current + event.y));
+      })
+      .onFinalize(() => {
+        stopAutoScroll();
+        dragStartRef.current = null;
+      });
+  }, [onSelectDrag, dayAtContent, extendTo, startAutoScroll, stopAutoScroll]);
+
+  // Web: cells relay pointer enter/leave (the pan above is swallowed by the cell
+  // touchables on web). A pressed pointer entering a cell extends the range;
+  // cross-month works because every visible cell relays independently.
+  const onDayPointerDown = useCallback(
+    (day: Date) => {
+      pointerDownRef.current = true;
+      dragMovedRef.current = false;
+      dragStartRef.current = isSelectable(day) ? day : null;
+    },
+    [isSelectable],
+  );
+  const onDayPointerEnter = useCallback(
+    (day: Date) => {
+      if (pointerDownRef.current && dragStartRef.current && isSelectable(day)) extendTo(day);
+    },
+    [extendTo, isSelectable],
+  );
+  useEffect(() => {
+    if (!isWeb || !onSelectDrag) return;
+    const end = () => {
+      pointerDownRef.current = false;
+      dragStartRef.current = null;
+    };
+    const target = globalThis as unknown as {
+      addEventListener?: (t: string, cb: () => void) => void;
+      removeEventListener?: (t: string, cb: () => void) => void;
+    };
+    target.addEventListener?.("pointerup", end);
+    return () => target.removeEventListener?.("pointerup", end);
+  }, [onSelectDrag]);
+
+  // Swallow the tap that follows a drag so it doesn't reset the just-swept range.
+  const handlePressDay = useCallback(
+    (day: Date) => {
+      if (dragMovedRef.current) {
+        dragMovedRef.current = false;
+        return;
+      }
+      onPressDay?.(day);
+    },
+    [onPressDay],
+  );
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollYRef.current = event.nativeEvent.contentOffset.y;
+  }, []);
   const handleViewableItemsChanged = useCallback(
     (info: OnViewableItemsChangedInfo<Date>) => {
       const settled = info.viewableItems.find((token) => token.isViewable);
@@ -143,6 +330,7 @@ function MonthListInner<T>({
     [onChangeVisibleMonth],
   );
 
+  const dragEnabled = onSelectDrag != null;
   const renderItem = useCallback(
     ({ item }: LegendListRenderItemProps<Date>) => (
       <View style={{ height: blockHeight(item) }}>
@@ -169,11 +357,13 @@ function MonthListInner<T>({
             calendarCellStyle={calendarCellStyle}
             renderEvent={renderEvent}
             keyExtractor={keyExtractor}
-            onPressDay={onPressDay}
+            onPressDay={dragEnabled ? handlePressDay : onPressDay}
             onLongPressDay={onLongPressDay}
             onPressEvent={onPressEvent}
             onLongPressEvent={onLongPressEvent}
             onPressMore={onPressMore}
+            onDayPointerDown={isWeb && dragEnabled ? onDayPointerDown : undefined}
+            onDayPointerEnter={isWeb && dragEnabled ? onDayPointerEnter : undefined}
           />
         </View>
       </View>
@@ -195,12 +385,40 @@ function MonthListInner<T>({
       calendarCellStyle,
       renderEvent,
       keyExtractor,
+      dragEnabled,
+      handlePressDay,
       onPressDay,
       onLongPressDay,
       onPressEvent,
       onLongPressEvent,
       onPressMore,
+      onDayPointerDown,
+      onDayPointerEnter,
     ],
+  );
+
+  const list = (
+    <LegendList
+      ref={listRef}
+      style={styles.list}
+      data={monthDates}
+      recycleItems={false}
+      keyExtractor={keyExtractorList}
+      getFixedItemSize={getFixedItemSize}
+      initialScrollIndex={initialIndex}
+      showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onScroll={handleScroll}
+      viewabilityConfig={VIEWABILITY}
+      onViewableItemsChanged={handleViewableItemsChanged}
+      onLayout={(event: LayoutChangeEvent) => {
+        viewportRef.current = {
+          width: event.nativeEvent.layout.width,
+          height: event.nativeEvent.layout.height,
+        };
+      }}
+      renderItem={renderItem}
+    />
   );
 
   return (
@@ -217,18 +435,11 @@ function MonthListInner<T>({
             </Text>
           ))}
         </View>
-        <LegendList
-          style={styles.list}
-          data={monthDates}
-          recycleItems={false}
-          keyExtractor={keyExtractorList}
-          getFixedItemSize={getFixedItemSize}
-          initialScrollIndex={initialIndex}
-          showsVerticalScrollIndicator={false}
-          viewabilityConfig={VIEWABILITY}
-          onViewableItemsChanged={handleViewableItemsChanged}
-          renderItem={renderItem}
-        />
+        {dragGesture && !isWeb ? (
+          <GestureDetector gesture={dragGesture}>{list}</GestureDetector>
+        ) : (
+          list
+        )}
       </View>
     </CalendarSelectionProvider>
   );

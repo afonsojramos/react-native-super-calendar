@@ -1,5 +1,5 @@
 import { fireEvent, render } from "@testing-library/react-native";
-import { StyleSheet, type ViewStyle } from "react-native";
+import { StyleSheet, Text, type ViewStyle } from "react-native";
 import { defaultTheme } from "../../theme";
 import type { CalendarEvent } from "../../types";
 import { DefaultEvent } from "../DefaultEvent";
@@ -44,6 +44,21 @@ describe("MonthView selection", () => {
     );
     const other = getByLabelText(/20 June 2026, 0 events/);
     expect(backgroundColorOf(other)).not.toBe(defaultTheme.colors.rangeBackground);
+  });
+});
+
+describe("MonthView renderCustomDateForMonth", () => {
+  it("replaces the default date badge with the custom renderer's output", () => {
+    const { getByText, queryByText } = render(
+      <MonthView
+        {...baseProps}
+        renderCustomDateForMonth={(day) => <Text>{`day-${day.getDate()}`}</Text>}
+      />,
+    );
+    // The custom label renders for the current month's days.
+    expect(getByText("day-15")).toBeTruthy();
+    // The default bare day number is gone (replaced by the custom label).
+    expect(queryByText("15")).toBeNull();
   });
 });
 
