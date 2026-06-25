@@ -35,6 +35,7 @@
     "!**/__tests__",
     "!**/__mocks__"
   ],
+  "type": "commonjs",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
