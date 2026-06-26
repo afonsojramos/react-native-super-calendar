@@ -174,6 +174,11 @@ The React Native peers (`react-native`, `react-native-gesture-handler`,
 install pulls none of them. Styling is plain inline styles driven by a `theme`
 prop (`defaultDomTheme` / `darkDomTheme`), no stylesheet import required.
 
+A selected range renders as a centered rounded "pill" band by default (its
+height and colour are the `rangeBandHeight` / `rangeBackground` theme tokens).
+Pass `fillCellOnSelection` to `MonthView` / `MonthList` to fill the whole cell
+edge to edge instead.
+
 ### Headless core (any renderer)
 
 Want the date math and selection model without any of the built-in UI? The
