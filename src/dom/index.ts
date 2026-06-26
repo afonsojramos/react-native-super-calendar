@@ -4,13 +4,27 @@
 // state and custom layouts.
 export { MonthView, type MonthViewProps } from "./MonthView";
 export { MonthList, type MonthListProps } from "./MonthList";
+export {
+  TimeGrid,
+  type TimeGridProps,
+  type DomRenderEvent,
+  type DomRenderEventArgs,
+} from "./TimeGrid";
 export { type DomCalendarTheme, darkDomTheme, defaultDomTheme, mergeDomTheme } from "./theme";
 export {
+  type CalendarEvent,
+  type CalendarMode,
   type DateRange,
   type DateSelectionConstraints,
   type DaySelectionState,
+  type ICalendarEvent,
+  type PositionedEvent,
+  type TimeGridMode,
   type UseDateRangeOptions,
   type WeekStartsOn,
+  getViewDays,
+  isAllDayEvent,
+  layoutDayEvents,
   daySelectionState,
   isDateSelectable,
   isRangeEndpoint,

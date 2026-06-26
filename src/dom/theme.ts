@@ -24,6 +24,12 @@ export interface DomCalendarTheme {
   selectedText: string;
   /** Continuous band behind a selected range. */
   rangeBackground: string;
+  /** Current-time indicator line on the time grid. */
+  nowIndicator: string;
+  /** Default event chip fill on the time grid. */
+  eventBackground: string;
+  /** Default event chip text. */
+  eventText: string;
   /** Row height of a day cell, in px. */
   cellHeight: number;
   /** Diameter of the day badge, in px. */
@@ -46,6 +52,9 @@ export const defaultDomTheme: DomCalendarTheme = {
   selectedBackground: "#1F6FEB",
   selectedText: "#FFFFFF",
   rangeBackground: "#DCE7FF",
+  nowIndicator: "#E5484D",
+  eventBackground: "#DCE7FF",
+  eventText: "#1A1B1E",
   cellHeight: 48,
   dayBadgeSize: 34,
   fontFamily: SYSTEM_FONT,
@@ -62,6 +71,9 @@ export const darkDomTheme: DomCalendarTheme = {
   selectedBackground: "#3B82F6",
   selectedText: "#FFFFFF",
   rangeBackground: "#1E3A66",
+  nowIndicator: "#F2555A",
+  eventBackground: "#243B61",
+  eventText: "#E6E8EB",
   cellHeight: 48,
   dayBadgeSize: 34,
   fontFamily: SYSTEM_FONT,
