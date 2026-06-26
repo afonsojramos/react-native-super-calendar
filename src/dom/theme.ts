@@ -36,6 +36,12 @@ export interface DomCalendarTheme {
   cellHeight: number;
   /** Diameter of the day badge, in px. */
   dayBadgeSize: number;
+  /**
+   * Height of the selection band strip, in px (the default pill look). The pill's
+   * corner radius is half this. Ignored when `fillCellOnSelection` is set, where
+   * the band fills the whole cell instead.
+   */
+  rangeBandHeight: number;
   /** Font stack for the calendar. */
   fontFamily: string;
 }
@@ -60,6 +66,7 @@ export const defaultDomTheme: DomCalendarTheme = {
   eventText: "#1A1B1E",
   cellHeight: 48,
   dayBadgeSize: 34,
+  rangeBandHeight: 32,
   fontFamily: SYSTEM_FONT,
 };
 
@@ -80,6 +87,7 @@ export const darkDomTheme: DomCalendarTheme = {
   eventText: "#E6E8EB",
   cellHeight: 48,
   dayBadgeSize: 34,
+  rangeBandHeight: 32,
   fontFamily: SYSTEM_FONT,
 };
 

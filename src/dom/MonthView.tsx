@@ -35,6 +35,11 @@ export interface MonthViewProps extends DateSelectionConstraints {
   selectedDates?: Date[];
   /** Show only this month's days (default true), matching the picker look. */
   ownDaysOnly?: boolean;
+  /**
+   * Fill the whole cell with the range background instead of the default
+   * centered rounded "pill" strip. Default false.
+   */
+  fillCellOnSelection?: boolean;
   /** Render the "Month yyyy" title above the grid (default true). */
   showTitle?: boolean;
   /** Render the weekday header row (default true). */
@@ -50,10 +55,12 @@ export interface MonthViewProps extends DateSelectionConstraints {
 }
 
 function dayCellStyle(day: MonthGridDay, theme: DomCalendarTheme): CSSProperties {
-  const base: CSSProperties = {
+  return {
+    position: "relative",
     height: theme.cellHeight,
     border: "none",
-    background: "transparent",
+    // The range band is a separate layer; the cell only carries the weekend tint.
+    background: day.isWeekend && !day.isInRange ? theme.weekendBackground : "transparent",
     font: "inherit",
     fontSize: 15,
     color: day.isDisabled ? theme.textDisabled : theme.text,
@@ -64,13 +71,40 @@ function dayCellStyle(day: MonthGridDay, theme: DomCalendarTheme): CSSProperties
     padding: 0,
     WebkitTapHighlightColor: "transparent",
   };
-  if (day.isWeekend && !day.isInRange) base.background = theme.weekendBackground;
-  // Continuous range band: the background fills the full width of every day in
-  // the range, endpoints included, so the band runs edge to edge across the row.
-  if (day.isInRange) base.background = theme.rangeBackground;
-  // A single-day selection (start === end) is just the badge, no band.
-  if (day.isRangeStart && day.isRangeEnd) base.background = "transparent";
-  return base;
+}
+
+/**
+ * The range band behind a day, rendered as its own layer so it can be a centered
+ * rounded strip (the default) or fill the whole cell (`fillCell`). Returns null
+ * for days with no band. Endpoints get the leading/trailing pill rounding.
+ */
+function rangeBandStyle(
+  day: MonthGridDay,
+  theme: DomCalendarTheme,
+  fillCell: boolean,
+): CSSProperties | null {
+  // Only complete-range days get a band; a single-day selection is badge-only.
+  if (!day.isInRange || (day.isRangeStart && day.isRangeEnd)) return null;
+  const inset = fillCell ? 0 : Math.max(0, (theme.cellHeight - theme.rangeBandHeight) / 2);
+  const radius = fillCell ? 0 : theme.rangeBandHeight / 2;
+  const style: CSSProperties = {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: inset,
+    bottom: inset,
+    background: theme.rangeBackground,
+    zIndex: 0,
+  };
+  if (day.isRangeStart) {
+    style.borderTopLeftRadius = radius;
+    style.borderBottomLeftRadius = radius;
+  }
+  if (day.isRangeEnd) {
+    style.borderTopRightRadius = radius;
+    style.borderBottomRightRadius = radius;
+  }
+  return style;
 }
 
 function badgeStyle(day: MonthGridDay, theme: DomCalendarTheme, hovered: boolean): CSSProperties {
@@ -84,6 +118,8 @@ function badgeStyle(day: MonthGridDay, theme: DomCalendarTheme, hovered: boolean
       ? theme.hoverBackground
       : "transparent";
   return {
+    position: "relative",
+    zIndex: 1,
     width: theme.dayBadgeSize,
     height: theme.dayBadgeSize,
     borderRadius: "50%",
@@ -102,6 +138,7 @@ export function MonthView({
   selectedRange,
   selectedDates,
   ownDaysOnly = true,
+  fillCellOnSelection = false,
   showTitle = true,
   showWeekdays = true,
   locale,
@@ -217,6 +254,7 @@ export function MonthView({
                   />
                 );
               }
+              const band = rangeBandStyle(day, theme, fillCellOnSelection);
               return (
                 <button
                   key={day.id}
@@ -236,6 +274,7 @@ export function MonthView({
                   onMouseEnter={day.isDisabled ? undefined : () => setHoveredKey(day.id)}
                   onMouseLeave={() => setHoveredKey((k) => (k === day.id ? null : k))}
                 >
+                  {band ? <span data-band aria-hidden style={band} /> : null}
                   <span style={badgeStyle(day, theme, hoveredKey === day.id)}>{day.label}</span>
                 </button>
               );

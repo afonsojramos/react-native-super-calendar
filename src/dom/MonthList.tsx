@@ -20,6 +20,8 @@ export interface MonthListProps extends DateSelectionConstraints {
   weekStartsOn?: WeekStartsOn;
   selectedRange?: DateRange;
   selectedDates?: Date[];
+  /** Fill the whole cell on selection instead of the default rounded pill band. */
+  fillCellOnSelection?: boolean;
   locale?: Locale;
   theme?: Partial<DomCalendarTheme>;
   /** Height of the scroll viewport, in px (default 480). */
@@ -41,6 +43,7 @@ export function MonthList({
   weekStartsOn = 0,
   selectedRange,
   selectedDates,
+  fillCellOnSelection = false,
   locale,
   theme: themeOverrides,
   height = 480,
@@ -99,6 +102,7 @@ export function MonthList({
             weekStartsOn={weekStartsOn}
             selectedRange={selectedRange}
             selectedDates={selectedDates}
+            fillCellOnSelection={fillCellOnSelection}
             showWeekdays={false}
             locale={locale}
             theme={themeOverrides}

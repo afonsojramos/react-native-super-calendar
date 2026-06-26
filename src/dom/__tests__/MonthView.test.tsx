@@ -52,4 +52,31 @@ describe("dom MonthView", () => {
     fireEvent.keyDown(container.querySelector('[role="grid"]')!, { key: "ArrowDown" });
     expect(container.querySelector('[data-day="2030-01-09"]')!.getAttribute("tabindex")).toBe("0");
   });
+
+  it("renders a rounded pill band by default and a full-cell fill when opted in", () => {
+    const selectedRange = { start: new Date(2030, 0, 6), end: new Date(2030, 0, 10) };
+    const { container, rerender } = render(
+      <MonthView date={new Date(2030, 0, 1)} weekStartsOn={1} selectedRange={selectedRange} />,
+    );
+    const startBand = () =>
+      container.querySelector('[data-day="2030-01-06"] [data-band]') as HTMLElement;
+    // Default: centered pill — rounded leading edge, inset from the cell top.
+    expect(startBand().style.borderTopLeftRadius).toBe("16px");
+    expect(startBand().style.top).toBe("8px");
+    // A middle day keeps the band but no rounding (so the strip is continuous).
+    const mid = container.querySelector('[data-day="2030-01-08"] [data-band]') as HTMLElement;
+    expect(mid.style.borderTopLeftRadius).toBe("");
+
+    rerender(
+      <MonthView
+        date={new Date(2030, 0, 1)}
+        weekStartsOn={1}
+        selectedRange={selectedRange}
+        fillCellOnSelection
+      />,
+    );
+    // Opt-in: band fills the whole cell, square corners (0 renders unitless).
+    expect(parseFloat(startBand().style.borderTopLeftRadius || "0")).toBe(0);
+    expect(parseFloat(startBand().style.top || "0")).toBe(0);
+  });
 });
