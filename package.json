@@ -138,12 +138,22 @@
     "@legendapp/list": ">=3",
     "date-fns": ">=3",
     "react": ">=18",
+    "react-dom": ">=18",
     "react-native": ">=0.74",
     "react-native-gesture-handler": ">=2.16",
     "react-native-reanimated": ">=4.0.0 <5",
     "react-native-worklets": ">=0.5"
   },
   "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    },
+    "react-native-gesture-handler": {
+      "optional": true
+    },
     "react-native-reanimated": {
       "optional": true
     },
