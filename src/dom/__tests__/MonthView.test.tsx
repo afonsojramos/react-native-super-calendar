@@ -33,8 +33,23 @@ describe("dom MonthView", () => {
       />,
     );
     const early = getByLabelText("Wednesday, 8 July 2026") as HTMLButtonElement;
-    expect(early.disabled).toBe(true);
+    expect(early.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(early);
     expect(onPressDay).not.toHaveBeenCalled();
+  });
+
+  it("keeps one tab stop and moves focus with the arrow keys (roving tabindex)", () => {
+    const { container } = render(<MonthView date={new Date(2030, 0, 1)} weekStartsOn={1} />);
+    const tabbable = () => container.querySelectorAll('[data-day][tabindex="0"]');
+    // exactly one day is tabbable; the rest are removed from the tab order
+    expect(tabbable()).toHaveLength(1);
+    expect(container.querySelector('[data-day="2030-01-01"]')!.getAttribute("tabindex")).toBe("0");
+
+    fireEvent.keyDown(container.querySelector('[role="grid"]')!, { key: "ArrowRight" });
+    expect(tabbable()).toHaveLength(1);
+    expect(container.querySelector('[data-day="2030-01-02"]')!.getAttribute("tabindex")).toBe("0");
+
+    fireEvent.keyDown(container.querySelector('[role="grid"]')!, { key: "ArrowDown" });
+    expect(container.querySelector('[data-day="2030-01-09"]')!.getAttribute("tabindex")).toBe("0");
   });
 });

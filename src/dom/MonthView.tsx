@@ -1,5 +1,20 @@
-import { format, type Locale } from "date-fns";
-import { type CSSProperties, useMemo } from "react";
+import {
+  addDays,
+  endOfMonth,
+  format,
+  isSameMonth,
+  type Locale,
+  startOfDay,
+  startOfMonth,
+} from "date-fns";
+import {
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   buildMonthGrid,
   type DateRange,
@@ -115,6 +130,41 @@ export function MonthView({
     [date, weekStartsOn, selectedRange, selectedDates, minDate, maxDate, isDateDisabled, locale],
   );
 
+  // Roving tabindex: only one day is in the tab order; arrow keys move focus
+  // within the month, so the grid is a single, sensible tab stop.
+  const initialFocus = useMemo(() => {
+    const inMonth = (d?: Date | null) => !!d && isSameMonth(d, date);
+    if (inMonth(selectedRange?.start)) return startOfDay(selectedRange!.start);
+    const picked = selectedDates?.find(inMonth);
+    if (picked) return startOfDay(picked);
+    const today = new Date();
+    return isSameMonth(today, date) ? startOfDay(today) : startOfMonth(date);
+  }, [date, selectedRange, selectedDates]);
+
+  const [focusedDate, setFocusedDate] = useState(initialFocus);
+  const initialFocusRef = useRef(initialFocus);
+  initialFocusRef.current = initialFocus;
+  const monthKey = format(date, "yyyy-MM");
+  useEffect(() => setFocusedDate(initialFocusRef.current), [monthKey]);
+
+  const gridRef = useRef<HTMLDivElement>(null);
+  const focusKey = format(focusedDate, "yyyy-MM-dd");
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    let next: Date | null = null;
+    if (e.key === "ArrowLeft") next = addDays(focusedDate, -1);
+    else if (e.key === "ArrowRight") next = addDays(focusedDate, 1);
+    else if (e.key === "ArrowUp") next = addDays(focusedDate, -7);
+    else if (e.key === "ArrowDown") next = addDays(focusedDate, 7);
+    else if (e.key === "Home") next = startOfMonth(date);
+    else if (e.key === "End") next = endOfMonth(date);
+    else return;
+    e.preventDefault();
+    if (!isSameMonth(next, date)) return;
+    setFocusedDate(next);
+    const key = format(next, "yyyy-MM-dd");
+    gridRef.current?.querySelector<HTMLElement>(`[data-day="${key}"]`)?.focus();
+  };
+
   return (
     <div
       className={className}
@@ -144,27 +194,54 @@ export function MonthView({
           ))}
         </div>
       ) : null}
-      {weeks.map((week) => (
-        <div key={week.id} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
-          {week.days.map((day) => {
-            const hidden = ownDaysOnly && !day.isCurrentMonth;
-            if (hidden) return <div key={day.id} style={{ height: theme.cellHeight }} />;
-            return (
-              <button
-                key={day.id}
-                type="button"
-                disabled={day.isDisabled}
-                aria-label={format(day.date, "EEEE, d MMMM yyyy", locale ? { locale } : undefined)}
-                aria-pressed={day.isSelected || day.isInRange}
-                style={dayCellStyle(day, theme)}
-                onClick={day.isDisabled ? undefined : () => onPressDay?.(day.date)}
-              >
-                <span style={badgeStyle(day, theme)}>{day.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      ))}
+      <div
+        ref={gridRef}
+        role="grid"
+        aria-label={format(date, "MMMM yyyy", locale ? { locale } : undefined)}
+        onKeyDown={onKeyDown}
+      >
+        {weeks.map((week) => (
+          <div
+            key={week.id}
+            role="row"
+            style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}
+          >
+            {week.days.map((day) => {
+              const hidden = ownDaysOnly && !day.isCurrentMonth;
+              if (hidden) {
+                return (
+                  <div
+                    key={day.id}
+                    role="gridcell"
+                    aria-hidden
+                    style={{ height: theme.cellHeight }}
+                  />
+                );
+              }
+              return (
+                <button
+                  key={day.id}
+                  type="button"
+                  role="gridcell"
+                  data-day={day.id}
+                  tabIndex={day.id === focusKey ? 0 : -1}
+                  aria-disabled={day.isDisabled || undefined}
+                  aria-label={format(
+                    day.date,
+                    "EEEE, d MMMM yyyy",
+                    locale ? { locale } : undefined,
+                  )}
+                  aria-pressed={day.isSelected || day.isInRange}
+                  style={dayCellStyle(day, theme)}
+                  onClick={day.isDisabled ? undefined : () => onPressDay?.(day.date)}
+                >
+                  <span style={badgeStyle(day, theme)}>{day.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
