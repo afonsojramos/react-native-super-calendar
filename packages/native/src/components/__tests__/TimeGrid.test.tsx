@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react-native";
+import { fireEvent, render } from "@testing-library/react-native";
 import { StyleSheet, Text } from "react-native";
 import type { CalendarEvent } from "../../types";
 
@@ -182,6 +182,39 @@ describe("TimeGrid business hours", () => {
     );
     expect(getByLabelText("Custom: Standup (day)")).toBeTruthy();
     expect(queryByLabelText(/Standup, 09:00 to 10:00/)).toBeNull();
+  });
+});
+
+describe("TimeGrid cross-page accessibility actions", () => {
+  const date = new Date(2026, 0, 6, 12, 0, 0); // Tue 6 Jan 2026
+
+  it("moves an event a whole page via the screen-reader actions, keeping its time", () => {
+    const onDragEvent = jest.fn();
+    const { getByLabelText } = render(
+      <Calendar
+        mode="week"
+        date={date}
+        events={[event]}
+        onChangeDate={noop}
+        onPressEvent={noop}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const bar = getByLabelText(/Standup, 09:00 to 10:00/);
+    const names = (bar.props.accessibilityActions ?? []).map((a: { name: string }) => a.name);
+    expect(names).toContain("move-next-page");
+    expect(names).toContain("move-previous-page");
+
+    // "Move to next week" shifts +7 days, preserving the 09:00-10:00 time.
+    fireEvent(bar, "accessibilityAction", { nativeEvent: { actionName: "move-next-page" } });
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent<WithId>, Date, Date];
+    expect(start.getTime()).toBe(new Date(2026, 0, 13, 9, 0, 0).getTime());
+    expect(end.getTime()).toBe(new Date(2026, 0, 13, 10, 0, 0).getTime());
+
+    // "Move to previous week" shifts -7 days from the original.
+    fireEvent(bar, "accessibilityAction", { nativeEvent: { actionName: "move-previous-page" } });
+    const [, prevStart] = onDragEvent.mock.calls[1] as [CalendarEvent<WithId>, Date, Date];
+    expect(prevStart.getTime()).toBe(new Date(2025, 11, 30, 9, 0, 0).getTime());
   });
 });
 

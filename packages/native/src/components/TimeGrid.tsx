@@ -64,6 +64,7 @@ import {
   cellRangeFromDrag,
   useNow,
   closedHourBands,
+  pageStepDays,
   resolveDraggedBounds,
   snapDeltaMinutes,
 } from "@super-calendar/core";
@@ -163,6 +164,9 @@ type AnimatedEventBoxProps<T> = {
   // the right calendar-day delta when hiddenDays makes the columns non-contiguous.
   dayOrdinals: number[];
   mode: CalendarMode;
+  // Calendar days one page spans, for the "move to next/previous page" screen-
+  // reader actions (the accessible equivalent of dragging an event to the edge).
+  daysPerPage: number;
   renderEvent: RenderEvent<T>;
   snapMinutes: number;
   onPress: (event: CalendarEvent<T>) => void;
@@ -183,6 +187,7 @@ function AnimatedEventBox<T>({
   dayCount,
   dayOrdinals,
   mode,
+  daysPerPage,
   renderEvent,
   snapMinutes,
   onPress,
@@ -377,6 +382,13 @@ function AnimatedEventBox<T>({
   // discrete screen-reader actions (VoiceOver/TalkBack invoke them from the
   // actions menu). Steps are one `snapMinutes` unit, matching a drag snap.
   const unit = (n: number) => `${n} minute${n === 1 ? "" : "s"}`;
+  // Label the whole-page move by what a page means in this mode.
+  const pageUnit =
+    mode === "week"
+      ? "week"
+      : daysPerPage === 1
+        ? "day"
+        : `${daysPerPage} day${daysPerPage === 1 ? "" : "s"}`;
   const accessibilityActions = draggable
     ? [
         { name: "move-later", label: `Move ${unit(snapMinutes)} later` },
@@ -387,6 +399,8 @@ function AnimatedEventBox<T>({
               { name: "shrink", label: `Shorten by ${unit(snapMinutes)}` },
             ]
           : []),
+        { name: "move-next-page", label: `Move to next ${pageUnit}` },
+        { name: "move-previous-page", label: `Move to previous ${pageUnit}` },
       ]
     : undefined;
   const handleAccessibilityAction = draggable
@@ -403,6 +417,12 @@ function AnimatedEventBox<T>({
             break;
           case "shrink":
             commitDrag(0, -snapMinutes);
+            break;
+          case "move-next-page":
+            commitDrag(daysPerPage * MINUTES_PER_DAY, daysPerPage * MINUTES_PER_DAY);
+            break;
+          case "move-previous-page":
+            commitDrag(-daysPerPage * MINUTES_PER_DAY, -daysPerPage * MINUTES_PER_DAY);
             break;
         }
       }
@@ -803,6 +823,9 @@ function TimetablePageInner<T>({
     () => getViewDays(mode, date, weekStartsOn, numberOfDays, isRTL, weekEndsOn, hiddenDays),
     [mode, date, weekStartsOn, numberOfDays, isRTL, weekEndsOn, hiddenDays],
   );
+  // Calendar days one page spans (7 for week, the column count otherwise), for
+  // the "move to next/previous page" screen-reader actions.
+  const daysPerPage = pageStepDays(mode, date, weekStartsOn, numberOfDays);
 
   // Plain number for worklets to close over: reading `days.length` inside a
   // gesture worklet would capture the whole `days` array (of `Date`s), which
@@ -1235,6 +1258,7 @@ function TimetablePageInner<T>({
                       dayCount={days.length}
                       dayOrdinals={dayOrdinals}
                       mode={mode}
+                      daysPerPage={daysPerPage}
                       renderEvent={renderEvent}
                       snapMinutes={snapMinutes}
                       showDragHandle={showDragHandle}

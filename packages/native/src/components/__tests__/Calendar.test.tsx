@@ -87,6 +87,8 @@ describe("Calendar screen-reader event actions", () => {
       "move-earlier",
       "extend",
       "shrink",
+      "move-next-page",
+      "move-previous-page",
     ]);
 
     // "Move later" shifts both edges by one snap step, preserving the duration.
