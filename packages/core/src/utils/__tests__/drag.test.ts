@@ -1,4 +1,24 @@
-import { cellRangeFromDrag, resolveDraggedBounds, shiftMinutes, snapDeltaMinutes } from "../drag";
+import {
+  cellRangeFromDrag,
+  pageStepDays,
+  resolveDraggedBounds,
+  shiftMinutes,
+  snapDeltaMinutes,
+} from "../drag";
+
+describe("pageStepDays", () => {
+  const date = new Date(2026, 5, 24); // Wed 24 Jun 2026
+
+  it("spans a whole week regardless of hidden days", () => {
+    expect(pageStepDays("week", date, 1)).toBe(7);
+  });
+
+  it("returns the column count for the count-based views", () => {
+    expect(pageStepDays("day", date, 1)).toBe(1);
+    expect(pageStepDays("3days", date, 1)).toBe(3);
+    expect(pageStepDays("custom", date, 1, 4)).toBe(4);
+  });
+});
 
 describe("cellRangeFromDrag clamping", () => {
   it("clamps a drag past the grid bottom to the end of the day, not past midnight", () => {

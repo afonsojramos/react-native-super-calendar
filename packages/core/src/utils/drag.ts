@@ -1,3 +1,21 @@
+import type { CalendarMode, WeekStartsOn } from "../types";
+import { getViewDays } from "./dates";
+
+/**
+ * How many calendar days one time-grid page spans, used to advance the view by a
+ * whole page (e.g. when dragging an event past the edge into the next week).
+ * Deliberately ignores `hiddenDays` so a week always steps 7, matching the
+ * keyboard PageUp/PageDown paging and `Calendar`'s own page step.
+ */
+export function pageStepDays(
+  mode: CalendarMode,
+  date: Date,
+  weekStartsOn: WeekStartsOn,
+  numberOfDays = 1,
+): number {
+  return getViewDays(mode, date, weekStartsOn, numberOfDays).length;
+}
+
 /**
  * Minutes to shift an event, snapping a vertical pixel drag to the nearest
  * `stepMinutes`. Runs on the UI thread inside the drag gesture. Returns 0 for a
