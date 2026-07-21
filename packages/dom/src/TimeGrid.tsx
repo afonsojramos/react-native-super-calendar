@@ -17,6 +17,7 @@ import {
   type CalendarEvent,
   type CalendarMode,
   cellRangeFromDrag,
+  pageStepDays,
   backgroundBandsForDay,
   closedHourBands,
   isBackgroundEvent,
@@ -68,6 +69,13 @@ export type TimeGridSlot =
 
 const GUTTER_WIDTH = 56;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+// Edge auto-advance: how close to the day-columns edge (px) counts as "at the
+// edge", how long to dwell there before paging, and the repeat interval while
+// the pointer stays in the zone.
+const EDGE_ZONE = 32;
+const EDGE_DWELL_MS = 600;
+const EDGE_REPEAT_MS = 600;
 
 // Off-screen but readable by assistive tech: gives an element an accessible name
 // without changing the visible layout.
@@ -206,6 +214,13 @@ export interface TimeGridProps<T = unknown> extends SlotStyleProps<TimeGridSlot>
    * Return `false` to reject the drop (the event snaps back).
    */
   onDragEvent?: (event: CalendarEvent<T>, start: Date, end: Date) => void | boolean;
+  /**
+   * Page the grid to a new anchor date. Supplying it alongside `onDragEvent`
+   * turns on edge auto-advance: dragging an event to the left/right edge and
+   * dwelling briefly pages the view so the event can be dropped on a day in the
+   * previous/next period. Controlled, like the native renderer's `onChangeDate`.
+   */
+  onChangeDate?: (date: Date) => void;
   /** Class applied to the root element. */
   className?: string;
   /** Inline styles applied to the root element. */
@@ -374,6 +389,7 @@ export function TimeGrid<T = unknown>({
   onCreateEvent,
   onDragStart,
   onDragEvent,
+  onChangeDate,
   className,
   style,
   classNames,
@@ -436,6 +452,42 @@ export function TimeGrid<T = unknown>({
     () => getViewDays(mode, date, weekStartsOn, numberOfDays, false, undefined, hiddenDays),
     [mode, date, weekStartsOn, numberOfDays, hiddenDays],
   );
+
+  // Edge auto-advance. During a move drag the pointer stream is handled at the
+  // document level (attached in beginDrag) so it survives the day columns
+  // unmounting when a page change swaps `date`. The listeners read these live
+  // refs rather than a stale render closure; `daysRef`/`pageDepsRef` update every
+  // render so the drop and the next page use the current view.
+  const edgeAdvanceEnabled = !!onChangeDate && !!onDragEvent;
+  const columnsRef = useRef<HTMLDivElement>(null);
+  const columnsRectRef = useRef<{ left: number; right: number } | null>(null);
+  const edgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const edgeSide = useRef<-1 | 0 | 1>(0);
+  const ptr = useRef({ x: 0, y: 0 });
+  const pagedRef = useRef(false);
+  const [paged, setPaged] = useState(false);
+  const draggedRef = useRef<{
+    event: CalendarEvent<T>;
+    onPress: () => void;
+    grabX: number;
+    grabY: number;
+    w: number;
+    h: number;
+  } | null>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
+  const docHandlersRef = useRef<{
+    move: (e: PointerEvent) => void;
+    up: (e: PointerEvent) => void;
+    cancel: (e: PointerEvent) => void;
+  } | null>(null);
+  const daysRef = useRef(days);
+  daysRef.current = days;
+  const pageDepsRef = useRef({ date, mode, weekStartsOn, numberOfDays });
+  pageDepsRef.current = { date, mode, weekStartsOn, numberOfDays };
+  const onChangeDateRef = useRef(onChangeDate);
+  onChangeDateRef.current = onChangeDate;
+  const onDragEventRef = useRef(onDragEvent);
+  onDragEventRef.current = onDragEvent;
 
   const allDayByDay = useMemo(
     // A multi-day all-day event shows in every column it overlaps (matching the
@@ -504,45 +556,62 @@ export function TimeGrid<T = unknown>({
   const Renderer = renderEvent;
   const totalHeight = windowHours * hourHeight;
 
-  const beginDrag = (
-    e: ReactPointerEvent,
-    event: CalendarEvent<T>,
-    key: string,
-    kind: "move" | "resize",
-    startHours: number,
-    durationHours: number,
-    dayIndex: number,
-  ) => {
-    if (!onDragEvent) return;
-    e.stopPropagation();
-    try {
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    } catch {
-      // Pointer capture is best-effort; some environments reject it.
+  // The day under a screen point, from the `data-date` on the column beneath the
+  // pointer (the ghost is pointer-transparent, so it doesn't shadow it). Guarded
+  // for jsdom, which has no `elementFromPoint`.
+  const dayAt = (x: number, y: number): Date | null => {
+    if (typeof document === "undefined" || typeof document.elementFromPoint !== "function") {
+      return null;
     }
-    // The event box is positioned inside its day column, so the parent's width
-    // is one day; columns are equal-width, so measuring one is enough. Resizes
-    // never move across days, so 0 is fine there.
-    const column = kind === "move" ? (e.currentTarget as HTMLElement).parentElement : null;
-    const dayWidth = column ? column.getBoundingClientRect().width : 0;
-    dragOrigin.current = {
-      pointerX: e.clientX,
-      pointerY: e.clientY,
-      startHours,
-      durationHours,
-      dayIndex,
-      dayWidth,
-    };
-    applyDrag({ key, kind, startHours, durationHours, dayDelta: 0, dayOffsetPx: 0, moved: false });
-    onDragStart?.(event);
+    const el = document.elementFromPoint(x, y)?.closest?.("[data-date]");
+    const iso = el?.getAttribute("data-date");
+    return iso ? new Date(iso) : null;
   };
-  const cancelDrag = () => {
-    applyDrag(null);
+
+  const clearEdgeTimer = () => {
+    if (edgeTimer.current) {
+      clearTimeout(edgeTimer.current);
+      edgeTimer.current = null;
+    }
+  };
+
+  // Page one period toward the held edge, then re-arm so holding keeps advancing.
+  const fireEdge = () => {
+    const side = edgeSide.current;
+    if (side === 0) return;
+    const p = pageDepsRef.current;
+    const step = pageStepDays(p.mode, p.date, p.weekStartsOn, p.numberOfDays);
+    onChangeDateRef.current?.(addDays(p.date, side * step));
+    pagedRef.current = true;
+    setPaged(true);
+    edgeTimer.current = setTimeout(fireEdge, EDGE_REPEAT_MS);
+  };
+
+  const detachDocListeners = () => {
+    const h = docHandlersRef.current;
+    if (!h) return;
+    document.removeEventListener("pointermove", h.move);
+    document.removeEventListener("pointerup", h.up);
+    document.removeEventListener("pointercancel", h.cancel);
+    docHandlersRef.current = null;
+  };
+
+  const finishDrag = () => {
+    detachDocListeners();
+    clearEdgeTimer();
+    edgeSide.current = 0;
+    pagedRef.current = false;
+    setPaged(false);
+    draggedRef.current = null;
     dragOrigin.current = null;
+    columnsRectRef.current = null;
+    applyDrag(null);
   };
-  const moveDrag = (e: ReactPointerEvent) => {
+
+  const moveDrag = (e: PointerEvent) => {
     const d = dragRef.current;
     if (!d || !dragOrigin.current) return;
+    ptr.current = { x: e.clientX, y: e.clientY };
     // Read the live row height (ref, not the state closure) so a mid-drag zoom
     // keeps the math aligned with what's on screen.
     const dHours = (e.clientY - dragOrigin.current.pointerY) / hourHeightRef.current;
@@ -555,13 +624,34 @@ export function TimeGrid<T = unknown>({
         windowStart,
         Math.max(windowStart, windowEnd - d.durationHours),
       );
-      // Map the horizontal drag to whole day columns, clamped so the event
-      // can't leave the visible range (mirrors the native renderer).
+      // Map the horizontal drag to whole day columns, clamped so the in-view box
+      // can't leave the visible range (mirrors the native renderer). Once paged,
+      // the drop day comes from the hit-test instead.
       const o = dragOrigin.current;
       const rawDayDelta = o.dayWidth > 0 ? Math.round((e.clientX - o.pointerX) / o.dayWidth) : 0;
-      const targetDay = clamp(o.dayIndex + rawDayDelta, 0, days.length - 1);
+      const targetDay = clamp(o.dayIndex + rawDayDelta, 0, daysRef.current.length - 1);
       const dayDelta = targetDay - o.dayIndex;
       applyDrag({ ...d, startHours, dayDelta, dayOffsetPx: dayDelta * o.dayWidth, moved: true });
+      // Follow the pointer with the floating ghost once the origin column is gone.
+      const g = ghostRef.current;
+      const held = draggedRef.current;
+      if (g && held) {
+        g.style.transform = `translate(${e.clientX - held.grabX}px, ${e.clientY - held.grabY}px)`;
+      }
+      // Edge auto-advance: dwell near a horizontal edge to page the view.
+      if (edgeAdvanceEnabled) {
+        const rect = columnsRectRef.current;
+        if (rect && rect.right > rect.left) {
+          const left = rect.left + gutterWidth;
+          const side: -1 | 0 | 1 =
+            e.clientX <= left + EDGE_ZONE ? -1 : e.clientX >= rect.right - EDGE_ZONE ? 1 : 0;
+          if (side !== edgeSide.current) {
+            clearEdgeTimer();
+            edgeSide.current = side;
+            if (side !== 0) edgeTimer.current = setTimeout(fireEdge, EDGE_DWELL_MS);
+          }
+        }
+      }
     } else {
       const durationHours = clamp(
         snap(dragOrigin.current.durationHours + dHours),
@@ -571,36 +661,117 @@ export function TimeGrid<T = unknown>({
       applyDrag({ ...d, durationHours, moved: true });
     }
   };
-  const endDrag = (
-    e: ReactPointerEvent,
-    day: Date,
-    event: CalendarEvent<T>,
-    onPress: () => void,
-  ) => {
+
+  const endDrag = (e: PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
     try {
-      (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+      (e.target as HTMLElement)?.releasePointerCapture?.(e.pointerId);
     } catch {
       // Best-effort release; ignore if the capture was never granted.
     }
+    const held = draggedRef.current;
     if (!d.moved) {
-      applyDrag(null);
-      onPress();
+      finishDrag();
+      held?.onPress();
       return;
     }
-    // The horizontal delta lands the event on another visible day column. With
-    // hiddenDays the columns aren't contiguous calendar days, so resolve the
-    // destination from the days array rather than shifting `day` by the column
-    // count. `dayDelta` is already clamped to the visible range at drag time.
     const originIndex = dragOrigin.current?.dayIndex ?? 0;
-    const base = startOfDay(days[originIndex + d.dayDelta] ?? day);
-    const start = addMinutes(base, Math.round(d.startHours * 60));
-    const end = addMinutes(base, Math.round((d.startHours + d.durationHours) * 60));
-    onDragEvent?.(event, start, end);
-    applyDrag(null);
-    dragOrigin.current = null;
+    let base: Date | null = null;
+    if (d.kind === "move") {
+      if (pagedRef.current) {
+        // The origin column has scrolled off with the page change, so the day
+        // under the pointer is authoritative; dropping off the grid snaps back.
+        const day = dayAt(e.clientX, e.clientY);
+        base = day ? startOfDay(day) : null;
+      } else {
+        // In view: resolve from the days array (correct under hiddenDays), as
+        // before. `dayDelta` is clamped to the visible range at drag time.
+        base = startOfDay(
+          daysRef.current[originIndex + d.dayDelta] ?? daysRef.current[originIndex],
+        );
+      }
+    } else {
+      base = startOfDay(daysRef.current[originIndex] ?? daysRef.current[0]);
+    }
+    if (base && held) {
+      const start = addMinutes(base, Math.round(d.startHours * 60));
+      const end = addMinutes(base, Math.round((d.startHours + d.durationHours) * 60));
+      onDragEventRef.current?.(held.event, start, end);
+    }
+    finishDrag();
   };
+
+  const cancelDrag = () => {
+    finishDrag();
+  };
+
+  const beginDrag = (
+    e: ReactPointerEvent,
+    event: CalendarEvent<T>,
+    key: string,
+    kind: "move" | "resize",
+    startHours: number,
+    durationHours: number,
+    dayIndex: number,
+    onPress?: () => void,
+  ) => {
+    if (!onDragEvent) return;
+    e.stopPropagation();
+    try {
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      // Pointer capture is best-effort; some environments reject it.
+    }
+    // The event box sits inside its day column, so the parent's width is one day;
+    // columns are equal-width, so measuring one is enough. Resizes never move
+    // across days, so 0 is fine there.
+    const boxEl = e.currentTarget as HTMLElement;
+    const column = kind === "move" ? boxEl.parentElement : null;
+    const dayWidth = column ? column.getBoundingClientRect().width : 0;
+    const boxRect = kind === "move" ? boxEl.getBoundingClientRect() : null;
+    dragOrigin.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startHours,
+      durationHours,
+      dayIndex,
+      dayWidth,
+    };
+    const cr = columnsRef.current?.getBoundingClientRect();
+    columnsRectRef.current = cr ? { left: cr.left, right: cr.right } : null;
+    draggedRef.current = {
+      event,
+      onPress: onPress ?? (() => {}),
+      grabX: boxRect ? e.clientX - boxRect.left : 0,
+      grabY: boxRect ? e.clientY - boxRect.top : 0,
+      w: boxRect ? boxRect.width : 0,
+      h: boxRect ? boxRect.height : 0,
+    };
+    ptr.current = { x: e.clientX, y: e.clientY };
+    edgeSide.current = 0;
+    pagedRef.current = false;
+    setPaged(false);
+    clearEdgeTimer();
+    applyDrag({ key, kind, startHours, durationHours, dayDelta: 0, dayOffsetPx: 0, moved: false });
+    onDragStart?.(event);
+    // Transport the rest of the drag at the document level so it survives the day
+    // columns unmounting on a page change (the dragged box's own node disappears).
+    const handlers = { move: moveDrag, up: endDrag, cancel: cancelDrag };
+    docHandlersRef.current = handlers;
+    document.addEventListener("pointermove", handlers.move);
+    document.addEventListener("pointerup", handlers.up);
+    document.addEventListener("pointercancel", handlers.cancel);
+  };
+
+  // Remove any lingering document listeners / dwell timer if we unmount mid-drag.
+  useEffect(
+    () => () => {
+      detachDocListeners();
+      clearEdgeTimer();
+    },
+    [],
+  );
 
   const pxFromTop = (el: HTMLElement, clientY: number) => clientY - el.getBoundingClientRect().top;
   const beginCreate = (e: ReactPointerEvent, dayIndex: number) => {
@@ -991,7 +1162,10 @@ export function TimeGrid<T = unknown>({
           touchAction: zoomable ? "pan-y" : "auto",
         }}
       >
-        <div style={{ display: "flex", height: totalHeight, position: "relative" }}>
+        <div
+          ref={columnsRef}
+          style={{ display: "flex", height: totalHeight, position: "relative" }}
+        >
           {/* Hour gutter (hidden when hideHours; the grid lines stay). */}
           {hideHours ? null : (
             <div
@@ -1034,6 +1208,8 @@ export function TimeGrid<T = unknown>({
             return (
               <div
                 key={day.toISOString()}
+                // Identifies the drop day for a cross-page drag hit-test.
+                data-date={day.toISOString()}
                 // Empty columns are a pointer-only create surface: drag to sweep
                 // out an event. They are deliberately not tab stops, so keyboard
                 // focus moves through events only, not every empty day.
@@ -1157,6 +1333,9 @@ export function TimeGrid<T = unknown>({
                         }
                         if (keyboardEventNavigation) onEventKeyDown(key, e);
                       }}
+                      // Pointer move/up/cancel are handled at the document level
+                      // (attached in beginDrag) so the drag survives the columns
+                      // remounting on a page change.
                       onPointerDown={
                         draggable
                           ? (e) =>
@@ -1168,14 +1347,10 @@ export function TimeGrid<T = unknown>({
                                 pe.startHours,
                                 pe.durationHours,
                                 dayIndex,
+                                onPress,
                               )
                           : undefined
                       }
-                      onPointerMove={draggable ? moveDrag : undefined}
-                      onPointerUp={
-                        draggable ? (e) => endDrag(e, day, pe.event, onPress) : undefined
-                      }
-                      onPointerCancel={draggable ? cancelDrag : undefined}
                       onClick={draggable ? undefined : onPress}
                       {...dataState({ "data-dragging": !!active })}
                       {...slot("event", {
@@ -1289,6 +1464,51 @@ export function TimeGrid<T = unknown>({
           })}
         </div>
       </div>
+      {/* Floating drag ghost: shown only after a page change, when the dragged
+          event's own column has unmounted. Positioned imperatively per pointer
+          move (see moveDrag) and pointer-transparent so the drop hit-test reads
+          the column beneath it. */}
+      {paged && draggedRef.current ? (
+        <div
+          ref={ghostRef}
+          aria-hidden
+          style={{
+            position: "fixed",
+            left: 0,
+            top: 0,
+            width: draggedRef.current.w,
+            height: draggedRef.current.h,
+            transform: `translate(${ptr.current.x - draggedRef.current.grabX}px, ${
+              ptr.current.y - draggedRef.current.grabY
+            }px)`,
+            pointerEvents: "none",
+            zIndex: 1000,
+            opacity: 0.85,
+          }}
+        >
+          {Renderer ? (
+            <Renderer
+              event={draggedRef.current.event}
+              mode={mode}
+              isAllDay={false}
+              boxHeight={draggedRef.current.h}
+              ampm={ampm}
+              onPress={() => {}}
+            />
+          ) : (
+            <DefaultDomEvent
+              event={draggedRef.current.event}
+              mode={mode}
+              isAllDay={false}
+              boxHeight={draggedRef.current.h}
+              ampm={ampm}
+              onPress={() => {}}
+              theme={theme}
+              boxProps={slot("eventBox")}
+            />
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

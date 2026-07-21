@@ -494,6 +494,9 @@ export function App() {
               events={events}
               weekStartsOn={1}
               height={560}
+              // Enables PageUp/PageDown paging and, with onDragEvent, edge
+              // auto-advance: drag an event to the left/right edge to change week.
+              onChangeDate={setDate}
               renderTimeEvent={EventContextMenu}
               renderMonthEvent={EventContextMenu}
               renderScheduleEvent={EventContextMenu}

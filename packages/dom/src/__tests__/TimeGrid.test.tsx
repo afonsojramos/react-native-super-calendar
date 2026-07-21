@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from "@testing-library/react";
+import { useState } from "react";
 import type { CalendarEvent } from "@super-calendar/core";
 import { TimeGrid } from "../TimeGrid";
 
@@ -624,5 +625,242 @@ describe("dom TimeGrid hiddenDays", () => {
     expect(getByText("26")).toBeTruthy();
     expect(queryByText("27")).toBeNull();
     expect(queryByText("21")).toBeNull();
+  });
+});
+
+describe("dom TimeGrid edge auto-advance", () => {
+  // The flex row that holds the columns; stub its rect so the edge zones resolve
+  // (jsdom has no layout). box -> column -> columns row.
+  const stubColumns = (box: HTMLElement) => {
+    const column = box.parentElement as HTMLElement;
+    column.getBoundingClientRect = () => ({ width: 100 }) as DOMRect;
+    const row = column.parentElement as HTMLElement;
+    row.getBoundingClientRect = () => ({ left: 0, right: 700, width: 700 }) as DOMRect;
+  };
+
+  afterEach(() => {
+    // Remove the elementFromPoint stub some tests install.
+    delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+  });
+
+  it("pages to the next period after dwelling on the right edge", () => {
+    jest.useFakeTimers();
+    try {
+      const onChangeDate = jest.fn();
+      const onDragEvent = jest.fn();
+      const { getByText } = render(
+        <TimeGrid
+          date={day}
+          mode="week"
+          events={events}
+          hourHeight={48}
+          onDragEvent={onDragEvent}
+          onChangeDate={onChangeDate}
+        />,
+      );
+      const box = wrapperOf(getByText("Focus"));
+      stubColumns(box);
+      fireEvent.pointerDown(box, { clientX: 350, clientY: 300, pointerId: 1 });
+      // Move into the right edge zone (>= 700 - 32).
+      fireEvent.pointerMove(box, { clientX: 690, clientY: 300, pointerId: 1 });
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(onChangeDate).toHaveBeenCalledTimes(1);
+      // A week steps 7 days forward.
+      const next = onChangeDate.mock.calls[0][0] as Date;
+      expect(next.getTime()).toBe(new Date(2026, 6, 3).getTime());
+      fireEvent.pointerUp(box, { clientX: 690, clientY: 300, pointerId: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("pages to the previous period after dwelling on the left edge", () => {
+    jest.useFakeTimers();
+    try {
+      const onChangeDate = jest.fn();
+      const { getByText } = render(
+        <TimeGrid
+          date={day}
+          mode="week"
+          events={events}
+          hourHeight={48}
+          onDragEvent={jest.fn()}
+          onChangeDate={onChangeDate}
+        />,
+      );
+      const box = wrapperOf(getByText("Focus"));
+      stubColumns(box);
+      fireEvent.pointerDown(box, { clientX: 350, clientY: 300, pointerId: 1 });
+      // Into the left edge zone (<= gutter(56) + 32 = 88).
+      fireEvent.pointerMove(box, { clientX: 40, clientY: 300, pointerId: 1 });
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(onChangeDate).toHaveBeenCalledTimes(1);
+      expect((onChangeDate.mock.calls[0][0] as Date).getTime()).toBe(
+        new Date(2026, 5, 19).getTime(),
+      );
+      fireEvent.pointerUp(box, { clientX: 40, clientY: 300, pointerId: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("keeps paging while the pointer is held at the edge", () => {
+    jest.useFakeTimers();
+    try {
+      const onChangeDate = jest.fn();
+      const Controlled = () => {
+        const [d, setD] = useState(day);
+        return (
+          <TimeGrid
+            date={d}
+            mode="week"
+            events={events}
+            hourHeight={48}
+            onDragEvent={jest.fn()}
+            onChangeDate={(next) => {
+              onChangeDate(next);
+              setD(next);
+            }}
+          />
+        );
+      };
+      const { getByText } = render(<Controlled />);
+      const box = wrapperOf(getByText("Focus"));
+      stubColumns(box);
+      fireEvent.pointerDown(box, { clientX: 350, clientY: 300, pointerId: 1 });
+      fireEvent.pointerMove(box, { clientX: 690, clientY: 300, pointerId: 1 });
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      // Two successive weeks: +7 then +14 from the anchor.
+      expect(onChangeDate).toHaveBeenCalledTimes(2);
+      expect((onChangeDate.mock.calls[0][0] as Date).getTime()).toBe(
+        new Date(2026, 6, 3).getTime(),
+      );
+      expect((onChangeDate.mock.calls[1][0] as Date).getTime()).toBe(
+        new Date(2026, 6, 10).getTime(),
+      );
+      fireEvent.pointerUp(box, { clientX: 690, clientY: 300, pointerId: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("does not page if the pointer leaves the edge before the dwell elapses", () => {
+    jest.useFakeTimers();
+    try {
+      const onChangeDate = jest.fn();
+      const { getByText } = render(
+        <TimeGrid
+          date={day}
+          mode="week"
+          events={events}
+          hourHeight={48}
+          onDragEvent={jest.fn()}
+          onChangeDate={onChangeDate}
+        />,
+      );
+      const box = wrapperOf(getByText("Focus"));
+      stubColumns(box);
+      fireEvent.pointerDown(box, { clientX: 350, clientY: 300, pointerId: 1 });
+      fireEvent.pointerMove(box, { clientX: 690, clientY: 300, pointerId: 1 });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      // Back to the center before the 600ms dwell completes.
+      fireEvent.pointerMove(box, { clientX: 350, clientY: 300, pointerId: 1 });
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(onChangeDate).not.toHaveBeenCalled();
+      fireEvent.pointerUp(box, { clientX: 350, clientY: 300, pointerId: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("commits the drop on a day in the newly revealed week", () => {
+    jest.useFakeTimers();
+    try {
+      const onDragEvent = jest.fn();
+      const Controlled = () => {
+        const [d, setD] = useState(day);
+        return (
+          <TimeGrid
+            date={d}
+            mode="week"
+            events={events}
+            hourHeight={48}
+            onDragEvent={onDragEvent}
+            onChangeDate={setD}
+          />
+        );
+      };
+      const { getByText, container } = render(<Controlled />);
+      const box = wrapperOf(getByText("Focus"));
+      stubColumns(box);
+      fireEvent.pointerDown(box, { clientX: 350, clientY: 300, pointerId: 1 });
+      fireEvent.pointerMove(box, { clientX: 690, clientY: 300, pointerId: 1 });
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      // Paging +7 anchors the week on 3 Jul (Sun-start week 28 Jun - 4 Jul); drop
+      // on Wed 1 Jul via the hit-test, keeping the 14:00-16:00 time and duration.
+      const targetIso = new Date(2026, 6, 1).toISOString();
+      const targetCol = container.querySelector(`[data-date="${targetIso}"]`) as HTMLElement;
+      expect(targetCol).toBeTruthy();
+      (document as { elementFromPoint?: unknown }).elementFromPoint = () => targetCol;
+      // The origin box has unmounted with the page change, so the release is
+      // dispatched at the document level (where the transport listens).
+      fireEvent.pointerUp(document.body, { clientX: 690, clientY: 300, pointerId: 1 });
+
+      expect(onDragEvent).toHaveBeenCalledTimes(1);
+      const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+      expect(start.getTime()).toBe(new Date(2026, 6, 1, 14, 0).getTime());
+      expect(end.getTime()).toBe(new Date(2026, 6, 1, 16, 0).getTime());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("snaps back when dropped off the grid after paging", () => {
+    jest.useFakeTimers();
+    try {
+      const onDragEvent = jest.fn();
+      const Controlled = () => {
+        const [d, setD] = useState(day);
+        return (
+          <TimeGrid
+            date={d}
+            mode="week"
+            events={events}
+            hourHeight={48}
+            onDragEvent={onDragEvent}
+            onChangeDate={setD}
+          />
+        );
+      };
+      const { getByText } = render(<Controlled />);
+      const box = wrapperOf(getByText("Focus"));
+      stubColumns(box);
+      fireEvent.pointerDown(box, { clientX: 350, clientY: 300, pointerId: 1 });
+      fireEvent.pointerMove(box, { clientX: 690, clientY: 300, pointerId: 1 });
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      // Dropped where no column is (e.g. over the header): no commit.
+      (document as { elementFromPoint?: unknown }).elementFromPoint = () => null;
+      fireEvent.pointerUp(document.body, { clientX: 690, clientY: 300, pointerId: 1 });
+      expect(onDragEvent).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

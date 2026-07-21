@@ -452,6 +452,7 @@ export function Calendar<T = unknown>({
         onCreateEvent={onCreateEvent}
         onDragStart={onDragStart}
         onDragEvent={onDragEvent}
+        onChangeDate={onChangeDate}
         onPressDateHeader={onPressDateHeader}
         renderEvent={renderTimeEvent}
         eventAccessibilityLabel={eventAccessibilityLabel}
