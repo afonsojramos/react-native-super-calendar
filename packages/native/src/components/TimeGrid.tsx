@@ -143,6 +143,51 @@ export type EventDragHandler<T> = (
  * via `onDragEvent`.
  */
 export type EventDragStartHandler<T> = (event: CalendarEvent<T>) => void;
+
+// How close (screen px) to the grid's left/right edge counts as "at the edge"
+// for the drag-to-page hand-off, and how long to dwell there before paging.
+const EDGE_ZONE_PX = 40;
+const EDGE_DWELL_MS = 600;
+const EDGE_REPEAT_MS = 600;
+// The held ghost hangs just below the finger so the drop point stays visible.
+const HELD_GHOST_GRAB_OFFSET = 16;
+// Stable no-op for the non-interactive drag ghost's onPress.
+const noop = () => {};
+
+/**
+ * The held-drag hand-off, owned by the pager (TimeGridInner) so it survives the
+ * per-page columns unmounting on a page change. A grabbed event lifts into a
+ * floating ghost tracked by these shared values; dragging to an edge dwell-pages
+ * the view; the drop maps the finger back to a day + time. All the worklet reads
+ * are shared values / plain numbers (never a Date), per the RN-worklets rule.
+ */
+type HeldDragApi<T> = {
+  /** 1 while an event is held (drives the ghost's visibility). */
+  active: SharedValue<number>;
+  /** Finger position in screen coordinates. */
+  absX: SharedValue<number>;
+  absY: SharedValue<number>;
+  /** Which edge the finger is in (-1 left, 0 none, 1 right); dedupes arm/disarm. */
+  edgeSide: SharedValue<number>;
+  /** The grid's measured left/right screen x (the day-columns band lives within). */
+  frameLeft: SharedValue<number>;
+  frameRight: SharedValue<number>;
+  /** Lift `event` (identified by `key`) into the overlay at the finger; JS thread. */
+  pickup: (
+    event: CalendarEvent<T>,
+    key: string,
+    absX: number,
+    absY: number,
+    w: number,
+    h: number,
+  ) => void;
+  /** Drop the held event where the gesture ended (in-page); JS thread. */
+  dropFromGesture: (absX: number, absY: number) => void;
+  /** Arm / cancel the edge dwell timer; JS thread. */
+  arm: (dir: number) => void;
+  disarm: () => void;
+};
+
 // Hour labels are nudged up so the number sits centred on its grid line. Pad the
 // scroll content by the same amount so the top-most label is never clipped.
 const HOUR_LABEL_TOP_INSET = 12;
@@ -174,6 +219,12 @@ type AnimatedEventBoxProps<T> = {
   onDragEvent?: EventDragHandler<T>;
   onDragStart?: EventDragStartHandler<T>;
   showDragHandle: boolean;
+  /** Stable key for this box, so it can tell whether it is the held event. */
+  boxKey: string;
+  /** True while this box's event is the one lifted into the drag overlay. */
+  isHeld: boolean;
+  /** Cross-page drag hand-off (see {@link HeldDragApi}); absent disables it. */
+  heldDrag?: HeldDragApi<T>;
 };
 
 function AnimatedEventBox<T>({
@@ -195,6 +246,9 @@ function AnimatedEventBox<T>({
   onDragEvent,
   onDragStart,
   showDragHandle,
+  boxKey,
+  isHeld,
+  heldDrag,
 }: AnimatedEventBoxProps<T>) {
   const RenderEventComponent = renderEvent;
   const theme = useCalendarTheme();
@@ -295,40 +349,81 @@ function AnimatedEventBox<T>({
     latest.current.onDragStart?.(latest.current.event);
   }, []);
 
+  // Lift this box's event into the pager-level overlay. Reads the event on the JS
+  // thread (never crossing a Date into a worklet); the width/height come from the
+  // worklet as plain numbers.
+  const doPickup = useCallback(
+    (absX: number, absY: number, w: number, h: number) => {
+      heldDrag?.pickup(latest.current.event, boxKey, absX, absY, w, h);
+    },
+    [heldDrag, boxKey],
+  );
+
   const moveGesture = useMemo(() => {
-    const pan = Gesture.Pan()
-      .enabled(draggable)
-      .onStart(() => {
-        runOnJS(notifyDragStart)();
-      })
-      .onUpdate((event) => {
-        moveOffset.value = event.translationY;
-        moveOffsetX.value = event.translationX;
-      })
-      .onEnd((event) => {
-        const minuteDelta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
-        // Map the horizontal drag to whole day columns, clamped so the event
-        // can't leave the visible range.
-        const rawDayDelta = dayWidth > 0 ? Math.round(event.translationX / dayWidth) : 0;
-        const targetDay = Math.min(Math.max(dayIndex + rawDayDelta, 0), dayCount - 1);
-        const dayDelta = targetDay - dayIndex;
-        if (minuteDelta === 0 && dayDelta === 0) {
-          moveOffset.value = 0;
-          moveOffsetX.value = 0;
-          return;
-        }
-        // Hold the snapped position so the box doesn't flash back to the
-        // original before the committed re-render lands.
-        moveOffset.value = (minuteDelta / MINUTES_PER_HOUR) * cellHeight.value;
-        moveOffsetX.value = dayDelta * dayWidth;
-        // Map the column shift to a calendar-day shift: with hiddenDays the
-        // columns aren't contiguous days, so a one-column move can span several
-        // calendar days. Fold that into the minute delta; shiftMinutes carries it
-        // into the date, so both edges move together and the duration is preserved.
-        const calendarDayDelta = dayOrdinals[targetDay] - dayOrdinals[dayIndex];
-        const totalDelta = minuteDelta + calendarDayDelta * MINUTES_PER_DAY;
-        runOnJS(commitDrag)(totalDelta, totalDelta);
-      });
+    const pan = Gesture.Pan().enabled(draggable);
+    if (heldDrag) {
+      // Held-drag: the box lifts into a floating ghost (owned by the pager, so it
+      // survives the columns unmounting on a page change), and the drop is mapped
+      // from the finger back to a day + time.
+      pan
+        .onStart((event) => {
+          heldDrag.absX.value = event.absoluteX;
+          heldDrag.absY.value = event.absoluteY;
+          heldDrag.edgeSide.value = 0;
+          runOnJS(notifyDragStart)();
+          runOnJS(doPickup)(event.absoluteX, event.absoluteY, width, boxHeight.value);
+        })
+        .onUpdate((event) => {
+          heldDrag.absX.value = event.absoluteX;
+          heldDrag.absY.value = event.absoluteY;
+          // Dwell near a horizontal edge to page the view.
+          const left = heldDrag.frameLeft.value;
+          const right = heldDrag.frameRight.value;
+          let side = 0;
+          if (right > left) {
+            side =
+              event.absoluteX <= left + EDGE_ZONE_PX
+                ? -1
+                : event.absoluteX >= right - EDGE_ZONE_PX
+                  ? 1
+                  : 0;
+          }
+          if (side !== heldDrag.edgeSide.value) {
+            heldDrag.edgeSide.value = side;
+            if (side === 0) runOnJS(heldDrag.disarm)();
+            else runOnJS(heldDrag.arm)(side);
+          }
+        })
+        .onEnd((event) => {
+          runOnJS(heldDrag.dropFromGesture)(event.absoluteX, event.absoluteY);
+        });
+    } else {
+      pan
+        .onStart(() => {
+          runOnJS(notifyDragStart)();
+        })
+        .onUpdate((event) => {
+          moveOffset.value = event.translationY;
+          moveOffsetX.value = event.translationX;
+        })
+        .onEnd((event) => {
+          const minuteDelta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
+          // Map the horizontal drag to whole day columns, clamped to the range.
+          const rawDayDelta = dayWidth > 0 ? Math.round(event.translationX / dayWidth) : 0;
+          const targetDay = Math.min(Math.max(dayIndex + rawDayDelta, 0), dayCount - 1);
+          const dayDelta = targetDay - dayIndex;
+          if (minuteDelta === 0 && dayDelta === 0) {
+            moveOffset.value = 0;
+            moveOffsetX.value = 0;
+            return;
+          }
+          moveOffset.value = (minuteDelta / MINUTES_PER_HOUR) * cellHeight.value;
+          moveOffsetX.value = dayDelta * dayWidth;
+          const calendarDayDelta = dayOrdinals[targetDay] - dayOrdinals[dayIndex];
+          const totalDelta = minuteDelta + calendarDayDelta * MINUTES_PER_DAY;
+          runOnJS(commitDrag)(totalDelta, totalDelta);
+        });
+    }
     // Native: long-press to pick up. Web: activate past a small drag in either
     // axis so clicks/right-clicks pass through but horizontal drags still move.
     return isWeb
@@ -348,6 +443,10 @@ function AnimatedEventBox<T>({
     dayOrdinals,
     commitDrag,
     notifyDragStart,
+    heldDrag,
+    doPickup,
+    width,
+    boxHeight,
   ]);
 
   const resizeGesture = useMemo(
@@ -433,7 +532,8 @@ function AnimatedEventBox<T>({
     themed: theme.containers.timeGridEvent,
   });
   const box = (
-    <Animated.View {...eventSlot} style={[eventSlot.style, boxStyle]}>
+    // Hidden while held: the floating ghost stands in for it during the drag.
+    <Animated.View {...eventSlot} style={[eventSlot.style, boxStyle, isHeld && { opacity: 0 }]}>
       <RenderEventComponent
         event={positioned.event}
         mode={mode}
@@ -680,6 +780,10 @@ type TimetablePageProps<T> = {
   onPressCell?: (date: Date) => void;
   onLongPressCell?: (date: Date) => void;
   onCreateEvent?: (start: Date, end: Date) => void;
+  /** Cross-page drag hand-off, forwarded to each event box. */
+  heldDrag?: HeldDragApi<T>;
+  /** Key of the currently held event (hidden while its ghost is dragged). */
+  heldKey: string | null;
 };
 
 // A single date's grid: the pinch-zoomable, vertically-scrolling time column.
@@ -730,6 +834,8 @@ function TimetablePageInner<T>({
   onPressCell,
   onLongPressCell,
   onCreateEvent,
+  heldDrag,
+  heldKey,
 }: TimetablePageProps<T>) {
   const theme = useCalendarTheme();
   const slot = useSlots<TimeGridSlot>();
@@ -1242,12 +1348,16 @@ function TimetablePageInner<T>({
                 .filter((p) => p.startHours < maxHour && p.startHours + p.durationHours > minHour)
                 .map((positioned, eventIndex) => {
                   const columnWidth = dayWidth / positioned.columns;
+                  // Prefix with the day so a multi-day event's per-day segments
+                  // (which share the same event key) stay unique across the
+                  // flattened list of all days' boxes.
+                  const boxKey = `${dayIndex}:${keyExtractor(positioned.event, eventIndex)}`;
                   return (
                     <AnimatedEventBox
-                      // Prefix with the day so a multi-day event's per-day segments
-                      // (which share the same event key) stay unique across the
-                      // flattened list of all days' boxes.
-                      key={`${dayIndex}:${keyExtractor(positioned.event, eventIndex)}`}
+                      key={boxKey}
+                      boxKey={boxKey}
+                      isHeld={heldKey === boxKey}
+                      heldDrag={heldDrag}
                       positioned={positioned}
                       cellHeight={heightSource}
                       minHour={minHour}
@@ -1744,6 +1854,213 @@ function TimeGridInner<T>({
   );
   useWebPagerKeys(swipeEnabled, goToPage);
 
+  // --- Cross-page drag hand-off (held-event overlay) ---
+  // A grabbed event lifts into a floating ghost owned here, above the pager, so it
+  // survives the per-page columns unmounting on a page change. Dragging to an edge
+  // dwell-pages the view; the drop maps the finger back to a day + time. All the
+  // gesture-thread reads are shared values / plain numbers (never a Date).
+  const pagerViewRef = useRef<View>(null);
+  const heldActive = useSharedValue(0);
+  const heldAbsX = useSharedValue(0);
+  const heldAbsY = useSharedValue(0);
+  const heldEdgeSide = useSharedValue(0);
+  const heldFrameLeft = useSharedValue(0);
+  const heldFrameRight = useSharedValue(0);
+  const heldOriginX = useSharedValue(0);
+  const heldOriginY = useSharedValue(0);
+  const heldGhostW = useSharedValue(0);
+  const heldGhostH = useSharedValue(0);
+  const [held, setHeld] = useState<{
+    event: CalendarEvent<T>;
+    key: string;
+    durationMs: number;
+  } | null>(null);
+  const heldRef = useRef(held);
+  heldRef.current = held;
+  // True once a dwell has paged the view mid-drag: the source box has unmounted,
+  // so the continuing gesture can't drop it — a tap on the new page places it.
+  const pagedSincePickup = useRef(false);
+  const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPageRef = useRef(goToPage);
+  goToPageRef.current = goToPage;
+  // The drop math reads the *current* view through a ref so the stable callbacks
+  // below (wired into gestures that outlive a page change) never go stale.
+  const dropCtxRef = useRef({
+    headerDays,
+    containerWidth,
+    hourColumnWidth,
+    minHour: clampedMinHour,
+    maxHour: clampedMaxHour,
+    snap: Math.max(1, dragStepMinutes),
+    onDragEvent,
+  });
+  dropCtxRef.current = {
+    headerDays,
+    containerWidth,
+    hourColumnWidth,
+    minHour: clampedMinHour,
+    maxHour: clampedMaxHour,
+    snap: Math.max(1, dragStepMinutes),
+    onDragEvent,
+  };
+
+  const measurePagerFrame = useCallback(() => {
+    pagerViewRef.current?.measureInWindow((x, y, w) => {
+      heldOriginX.value = x;
+      heldOriginY.value = y;
+      heldFrameLeft.value = x + hourColumnWidth;
+      heldFrameRight.value = x + w;
+    });
+  }, [heldOriginX, heldOriginY, heldFrameLeft, heldFrameRight, hourColumnWidth]);
+
+  const clearHeld = useCallback(() => {
+    if (dwellTimer.current) {
+      clearTimeout(dwellTimer.current);
+      dwellTimer.current = null;
+    }
+    heldActive.value = 0;
+    heldEdgeSide.value = 0;
+    pagedSincePickup.current = false;
+    setHeld(null);
+  }, [heldActive, heldEdgeSide]);
+
+  const commitHeldDrop = useCallback(
+    (absX: number, absY: number) => {
+      const current = heldRef.current;
+      if (!current) return;
+      const ctx = dropCtxRef.current;
+      const lanes = ctx.headerDays;
+      if (lanes.length === 0) {
+        clearHeld();
+        return;
+      }
+      const dayW = (ctx.containerWidth - ctx.hourColumnWidth) / lanes.length || 1;
+      const idx = Math.min(
+        Math.max(Math.floor((absX - heldFrameLeft.value) / dayW), 0),
+        lanes.length - 1,
+      );
+      const day = lanes[idx];
+      const rawMin =
+        (ctx.minHour + (absY - heldOriginY.value + scrollY.value) / (cellHeight.value || 1)) * 60;
+      const durationMin = current.durationMs / 60_000;
+      const lo = ctx.minHour * 60;
+      const hi = Math.max(lo, ctx.maxHour * 60 - durationMin);
+      const minutes = Math.max(lo, Math.min(Math.round(rawMin / ctx.snap) * ctx.snap, hi));
+      const start = new Date(day);
+      start.setHours(0, 0, 0, 0);
+      start.setMinutes(minutes);
+      const end = new Date(start.getTime() + current.durationMs);
+      ctx.onDragEvent?.(current.event, start, end);
+      clearHeld();
+    },
+    [heldFrameLeft, heldOriginY, scrollY, cellHeight, clearHeld],
+  );
+
+  const pickupHeld = useCallback(
+    (event: CalendarEvent<T>, key: string, absX: number, absY: number, w: number, h: number) => {
+      measurePagerFrame();
+      heldAbsX.value = absX;
+      heldAbsY.value = absY;
+      heldGhostW.value = w;
+      heldGhostH.value = h;
+      heldEdgeSide.value = 0;
+      heldActive.value = 1;
+      pagedSincePickup.current = false;
+      setHeld({ event, key, durationMs: event.end.getTime() - event.start.getTime() });
+    },
+    [measurePagerFrame, heldAbsX, heldAbsY, heldGhostW, heldGhostH, heldEdgeSide, heldActive],
+  );
+
+  const dropFromGesture = useCallback(
+    (absX: number, absY: number) => {
+      // After a dwell paged the view the source box has unmounted, so this
+      // gesture can't finish the drop; leave the event held for a tap to place.
+      if (pagedSincePickup.current) return;
+      commitHeldDrop(absX, absY);
+    },
+    [commitHeldDrop],
+  );
+
+  const disarmEdge = useCallback(() => {
+    if (dwellTimer.current) {
+      clearTimeout(dwellTimer.current);
+      dwellTimer.current = null;
+    }
+  }, []);
+  const armEdge = useCallback(
+    (dir: number) => {
+      disarmEdge();
+      const tick = () => {
+        // Don't outrun a settling programmatic scroll, or a fast repeat lands short.
+        if (pendingScrollIndexRef.current == null) {
+          pagedSincePickup.current = true;
+          goToPageRef.current(dir);
+        }
+        dwellTimer.current = setTimeout(tick, EDGE_REPEAT_MS);
+      };
+      dwellTimer.current = setTimeout(tick, EDGE_DWELL_MS);
+    },
+    [disarmEdge],
+  );
+
+  const heldDrag = useMemo<HeldDragApi<T>>(
+    () => ({
+      active: heldActive,
+      absX: heldAbsX,
+      absY: heldAbsY,
+      edgeSide: heldEdgeSide,
+      frameLeft: heldFrameLeft,
+      frameRight: heldFrameRight,
+      pickup: pickupHeld,
+      dropFromGesture,
+      arm: armEdge,
+      disarm: disarmEdge,
+    }),
+    [
+      heldActive,
+      heldAbsX,
+      heldAbsY,
+      heldEdgeSide,
+      heldFrameLeft,
+      heldFrameRight,
+      pickupHeld,
+      dropFromGesture,
+      armEdge,
+      disarmEdge,
+    ],
+  );
+  const heldKey = held?.key ?? null;
+
+  // A tap while an event is held drops it at the tapped cell — the way to place
+  // an event after a dwell has paged the view (which unmounts its source box).
+  const dropTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(held != null)
+        .onEnd((e) => {
+          runOnJS(commitHeldDrop)(e.absoluteX, e.absoluteY);
+        }),
+    [held, commitHeldDrop],
+  );
+
+  // The floating ghost follows the finger (screen coords, offset into the pager).
+  const heldGhostStyle = useAnimatedStyle(() => ({
+    opacity: heldActive.value ? 0.9 : 0,
+    width: heldGhostW.value,
+    height: heldGhostH.value,
+    transform: [
+      { translateX: heldAbsX.value - heldOriginX.value - heldGhostW.value / 2 },
+      { translateY: heldAbsY.value - heldOriginY.value - HELD_GHOST_GRAB_OFFSET },
+    ],
+  }));
+
+  useEffect(
+    () => () => {
+      if (dwellTimer.current) clearTimeout(dwellTimer.current);
+    },
+    [],
+  );
+
   // Honour the OS "reduce motion" setting: the pager's one animated transition
   // (the snap-back below) becomes an instant jump when it's on.
   const reduceMotion = useReducedMotion();
@@ -1810,6 +2127,8 @@ function TimeGridInner<T>({
           onPressCell={handlePressCell}
           onLongPressCell={onLongPressCell}
           onCreateEvent={onCreateEvent}
+          heldDrag={heldDrag}
+          heldKey={heldKey}
         />
       </View>
     ),
@@ -1857,15 +2176,23 @@ function TimeGridInner<T>({
       hiddenDays,
       now,
       timeZone,
+      heldDrag,
+      heldKey,
     ],
   );
 
   // Pages are keyed by date, so LegendList keeps the items it has already rendered
-  // and only re-renders them when `data` or `extraData` changes. Feed both `events`
-  // (so a moved event repaints in place) and `activeIndex` (so each page's
-  // `isActive` updates as you swipe). Without `activeIndex`, a page that pages in
-  // never learns it became active and stays at its seeded scroll offset.
-  const listExtraData = useMemo(() => ({ events, activeIndex }), [events, activeIndex]);
+  // and only re-renders them when `data` or `extraData` changes. Feed `events`
+  // (so a moved event repaints in place), `activeIndex` (so each page's `isActive`
+  // updates as you swipe), and `heldKey` (so the source box hides/unhides while a
+  // ghost is dragged). Without `activeIndex`, a page that pages in never learns it
+  // became active and stays at its seeded scroll offset.
+  const listExtraData = useMemo(
+    () => ({ events, activeIndex, heldKey }),
+    [events, activeIndex, heldKey],
+  );
+  // Alias so the drag ghost can render the same event component as the grid.
+  const HeldGhostEvent = labeledRenderEvent;
 
   return (
     <SlotStylesProvider classNames={classNames} styles={styleOverrides}>
@@ -1890,44 +2217,66 @@ function TimeGridInner<T>({
         {headerComponent}
 
         <View
+          ref={pagerViewRef}
           style={styles.pager}
           onLayout={(event) => {
             setPageHeight(event.nativeEvent.layout.height);
             setContainerWidth(event.nativeEvent.layout.width);
             setMeasured(true);
+            measurePagerFrame();
           }}
         >
-          <LegendList
-            // Remount only on the seed→measured transition (see `measured`), not on
-            // every height change, so a day↔week header-height difference resizes the
-            // items in place instead of remounting and blanking the page.
-            key={measured ? "grid" : "grid-seed"}
-            ref={listRef}
-            style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
-            data={pageDates}
-            extraData={listExtraData}
-            horizontal
-            recycleItems={false}
-            keyExtractor={keyExtractorList}
-            getFixedItemSize={getFixedItemSize}
-            // On web LegendList ignores these RN scroll props (it leaks them to the
-            // DOM as unknown attributes), so omit them there and disable horizontal
-            // scroll via `webNoScroll`; paging is driven by the arrow keys instead.
-            // Native: paging makes each swipe hard-stop at the adjacent page, while
-            // `freeSwipe` lets momentum carry across pages and snap to a boundary.
-            {...(isWeb
-              ? null
-              : {
-                  scrollEnabled: swipeEnabled,
-                  pagingEnabled: !freeSwipe,
-                  snapToIndices: freeSwipe ? snapToIndices : undefined,
-                })}
-            initialScrollIndex={activeIndex}
-            showsHorizontalScrollIndicator={false}
-            viewabilityConfig={PAGE_VIEWABILITY}
-            onViewableItemsChanged={handleViewableItemsChanged}
-            renderItem={renderItem}
-          />
+          <GestureDetector gesture={dropTapGesture}>
+            <LegendList
+              // Remount only on the seed→measured transition (see `measured`), not on
+              // every height change, so a day↔week header-height difference resizes the
+              // items in place instead of remounting and blanking the page.
+              key={measured ? "grid" : "grid-seed"}
+              ref={listRef}
+              style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
+              data={pageDates}
+              extraData={listExtraData}
+              horizontal
+              recycleItems={false}
+              keyExtractor={keyExtractorList}
+              getFixedItemSize={getFixedItemSize}
+              // On web LegendList ignores these RN scroll props (it leaks them to the
+              // DOM as unknown attributes), so omit them there and disable horizontal
+              // scroll via `webNoScroll`; paging is driven by the arrow keys instead.
+              // Native: paging makes each swipe hard-stop at the adjacent page, while
+              // `freeSwipe` lets momentum carry across pages and snap to a boundary.
+              {...(isWeb
+                ? null
+                : {
+                    scrollEnabled: swipeEnabled,
+                    pagingEnabled: !freeSwipe,
+                    snapToIndices: freeSwipe ? snapToIndices : undefined,
+                  })}
+              initialScrollIndex={activeIndex}
+              showsHorizontalScrollIndicator={false}
+              viewabilityConfig={PAGE_VIEWABILITY}
+              onViewableItemsChanged={handleViewableItemsChanged}
+              renderItem={renderItem}
+            />
+          </GestureDetector>
+          {/* The floating drag ghost: a decorative stand-in for the held event
+              that follows the finger above the pager, so the drag stays visible
+              after its source column unmounts on a page change. */}
+          {held ? (
+            <Animated.View
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[styles.heldGhost, heldGhostStyle]}
+            >
+              <HeldGhostEvent
+                event={held.event}
+                mode={mode}
+                boxHeight={heldGhostH}
+                onPress={noop}
+              />
+            </Animated.View>
+          ) : null}
         </View>
       </View>
     </SlotStylesProvider>
@@ -2123,6 +2472,12 @@ const styles = StyleSheet.create({
   },
   pagerList: {
     flex: 1,
+  },
+  heldGhost: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    zIndex: 20,
   },
   container: {
     flex: 1,
