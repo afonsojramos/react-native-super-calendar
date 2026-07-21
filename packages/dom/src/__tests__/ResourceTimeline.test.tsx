@@ -443,6 +443,60 @@ describe("dom ResourceTimeline resource paging", () => {
     { id: "d", title: "Room D" },
   ];
 
+  it("confines cross-lane drops and business-hours bands to the visible page", () => {
+    const onDragEvent = jest.fn();
+    const pagedEvents: CalendarEvent<WithResource>[] = [
+      {
+        id: "9",
+        resourceId: "c",
+        title: "OnPageC",
+        start: new Date(2026, 5, 26, 9),
+        end: new Date(2026, 5, 26, 10),
+      },
+    ];
+    const { container, getAllByText, getByText, queryByText } = render(
+      <ResourceTimeline
+        date={date}
+        resources={four}
+        events={pagedEvents}
+        resourcesPerPage={2}
+        resourcePage={1}
+        startHour={0}
+        hourWidth={80}
+        businessHours={() => ({ start: 9, end: 17 })}
+        renderBusinessHours={({ resource }) => <span>{`closed-${resource.id}`}</span>}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    // Page 1 (of 2) shows rooms c and d only; a and b are off-page.
+    const laneIds = Array.from(container.querySelectorAll("[data-resource-id]")).map((el) =>
+      el.getAttribute("data-resource-id"),
+    );
+    expect(laneIds).toEqual(["c", "d"]);
+    // Business-hours bands render for the visible lanes (before-open + after-close
+    // per lane), not the off-page ones.
+    expect(getAllByText("closed-c")).toHaveLength(2);
+    expect(getAllByText("closed-d")).toHaveLength(2);
+    expect(queryByText("closed-a")).toBeNull();
+
+    // A drop hit-testing to an off-page lane ("a") can't target it: laneAt only
+    // searches the visible resources, so it falls back to the origin lane ("c").
+    const laneA = document.createElement("div");
+    laneA.setAttribute("data-resource-id", "a");
+    const doc = document as { elementFromPoint?: (x: number, y: number) => Element | null };
+    doc.elementFromPoint = () => laneA;
+    try {
+      const bar = getByText("OnPageC").closest("button") as HTMLElement;
+      fireEvent.pointerDown(bar, { clientX: 100, clientY: 20, pointerId: 1 });
+      fireEvent.pointerMove(bar, { clientX: 100, clientY: 90, pointerId: 1 });
+      fireEvent.pointerUp(bar, { clientX: 100, clientY: 90, pointerId: 1 });
+    } finally {
+      delete doc.elementFromPoint;
+    }
+    const [, , , resource] = onDragEvent.mock.calls[0] as [unknown, Date, Date, { id: string }];
+    expect(resource.id).toBe("c");
+  });
+
   it("shows only the first page of lanes by default", () => {
     const { getByText, queryByText } = render(
       <ResourceTimeline
