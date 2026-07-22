@@ -70,17 +70,34 @@ import * as Haptics from "expo-haptics";
 />;
 ```
 
+### Move an event to another week
+
+Also pass `onChangeDate` alongside `onDragEvent` to let a drag cross the visible
+range into an off-screen period. Drag an event to the left or right edge of the
+day columns and hold briefly; the view pages to the previous/next period and
+keeps paging while you hold there.
+
+- **Web:** the drag stays live across the page change; drop on any day in the
+  newly revealed range.
+- **React Native:** the event lifts into a floating ghost, the edge dwell pages
+  the view, and you tap the target day and time on the new page to place it (the
+  lift survives the page change because it sits above the pager).
+
+It's automatic whenever both `onChangeDate` and `onDragEvent` are set, and only
+fires on a deliberate dwell at the very edge, so it won't trip a normal in-view
+drag.
+
 ### Screen-reader rescheduling
 
 Dragging is a gesture, so on the React Native renderer draggable events also carry
 **accessibility actions** for VoiceOver / TalkBack users: _move earlier_, _move
-later_, and (when the event owns its end) _extend_ / _shorten_, each stepping by
-`dragStepMinutes`. They run through the same commit path as a drag, so
-`onDragEvent` fires exactly as it would from a gesture (and can still return
-`false` to reject). The built-in event renderer wires these up automatically; a
-custom `renderEvent` should spread the `accessibilityActions` and
-`onAccessibilityAction` it receives onto its pressable to keep the event operable
-by assistive tech.
+later_, (when the event owns its end) _extend_ / _shorten_, and _move to next /
+previous week_ (per-mode: the page span), each stepping by `dragStepMinutes` or a
+whole page. They run through the same commit path as a drag, so `onDragEvent`
+fires exactly as it would from a gesture (and can still return `false` to reject).
+The built-in event renderer wires these up automatically; a custom `renderEvent`
+should spread the `accessibilityActions` and `onAccessibilityAction` it receives
+onto its pressable to keep the event operable by assistive tech.
 
 ## Drag to create
 
