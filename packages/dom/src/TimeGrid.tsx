@@ -460,7 +460,6 @@ export function TimeGrid<T = unknown>({
   // render so the drop and the next page use the current view.
   const edgeAdvanceEnabled = !!onChangeDate && !!onDragEvent;
   const columnsRef = useRef<HTMLDivElement>(null);
-  const columnsRectRef = useRef<{ left: number; right: number } | null>(null);
   const edgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const edgeSide = useRef<-1 | 0 | 1>(0);
   const ptr = useRef({ x: 0, y: 0 });
@@ -604,7 +603,6 @@ export function TimeGrid<T = unknown>({
     setPaged(false);
     draggedRef.current = null;
     dragOrigin.current = null;
-    columnsRectRef.current = null;
     applyDrag(null);
   };
 
@@ -638,9 +636,10 @@ export function TimeGrid<T = unknown>({
       if (g && held) {
         g.style.transform = `translate(${e.clientX - held.grabX}px, ${e.clientY - held.grabY}px)`;
       }
-      // Edge auto-advance: dwell near a horizontal edge to page the view.
+      // Edge auto-advance: dwell near a horizontal edge to page the view. Read the
+      // columns rect live so a mid-drag scroll/layout shift can't stale it.
       if (edgeAdvanceEnabled) {
-        const rect = columnsRectRef.current;
+        const rect = columnsRef.current?.getBoundingClientRect();
         if (rect && rect.right > rect.left) {
           const left = rect.left + gutterWidth;
           const side: -1 | 0 | 1 =
@@ -738,8 +737,6 @@ export function TimeGrid<T = unknown>({
       dayIndex,
       dayWidth,
     };
-    const cr = columnsRef.current?.getBoundingClientRect();
-    columnsRectRef.current = cr ? { left: cr.left, right: cr.right } : null;
     draggedRef.current = {
       event,
       onPress: onPress ?? (() => {}),
@@ -757,6 +754,8 @@ export function TimeGrid<T = unknown>({
     onDragStart?.(event);
     // Transport the rest of the drag at the document level so it survives the day
     // columns unmounting on a page change (the dragged box's own node disappears).
+    // Detach any prior set first so a second beginDrag can't leak listeners.
+    detachDocListeners();
     const handlers = { move: moveDrag, up: endDrag, cancel: cancelDrag };
     docHandlersRef.current = handlers;
     document.addEventListener("pointermove", handlers.move);
@@ -1281,7 +1280,10 @@ export function TimeGrid<T = unknown>({
                 />
                 {positioned.map((pe, idx) => {
                   const key = `${dayIndex}:${idx}`;
-                  const active = drag?.key === key ? drag : null;
+                  // Not while paged: after a page change the origin box is gone and
+                  // the ghost stands in, so a same-slot event on the new page (e.g. a
+                  // recurring one) must not also render lifted.
+                  const active = !paged && drag?.key === key ? drag : null;
                   const startHours = active ? active.startHours : pe.startHours;
                   const durationHours = active ? active.durationHours : pe.durationHours;
                   // Drop events that fall entirely outside the visible window; those
