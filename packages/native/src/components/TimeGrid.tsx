@@ -149,17 +149,74 @@ const EDGE_DWELL_MS = 500;
 const EDGE_ZONE_PX = 36;
 
 /**
- * Lets a per-event drag worklet, deep inside the pager, both locate the pager's
- * horizontal edges and freeze its swipe scroll while an edge-page is committed.
- * Freezing matters on native: a programmatic page scroll is otherwise deferred
- * until the touch ends, so the view would only advance once the finger lifts.
+ * Lets a per-event drag worklet, deep inside the pager, drive a cross-week drag:
+ * locate the pager's edges, freeze the swipe scroll while paging (a native
+ * programmatic scroll is otherwise deferred until the touch ends, so the view
+ * would only advance once the finger lifts), and hand the event off to a floating
+ * ghost that survives the source page paging away, then commit on release.
  */
 type EdgePaging = {
+  // Pager frame in window space, so the worklet can find the edges and place the
+  // ghost (its top-left is the window origin the finger coords are relative to).
   pagerLeft: SharedValue<number>;
+  pagerTop: SharedValue<number>;
   pagerWidth: SharedValue<number>;
   lockScroll: (locked: boolean) => void;
+  // The floating "held" copy of the dragged event: pager-local top-left, size, and
+  // visibility, driven on the UI thread so it tracks the finger across the page.
+  ghostX: SharedValue<number>;
+  ghostY: SharedValue<number>;
+  ghostW: SharedValue<number>;
+  ghostH: SharedValue<number>;
+  ghostVisible: SharedValue<number>;
+  // Show the ghost for `event`; drop it at pager-local `ghostLocalX` shifted in
+  // time by `minuteDelta`; or cancel without committing.
+  beginLift: (event: CalendarEvent<unknown>) => void;
+  commitLiftedDrop: (ghostLocalX: number, minuteDelta: number) => void;
+  cancelLift: () => void;
 };
 const EdgePagingContext = createContext<EdgePaging | null>(null);
+
+const noop = () => {};
+
+/**
+ * The floating copy of a dragged event, rendered above the pager so a cross-week
+ * drag stays visible after its source page pages away. Position, size, and
+ * visibility are driven on the UI thread by the shared values so it tracks the
+ * finger without a React re-render.
+ */
+function DragGhost<T>({
+  x,
+  y,
+  w,
+  h,
+  visible,
+  event,
+  mode,
+  renderEvent,
+}: {
+  x: SharedValue<number>;
+  y: SharedValue<number>;
+  w: SharedValue<number>;
+  h: SharedValue<number>;
+  visible: SharedValue<number>;
+  event: CalendarEvent<T>;
+  mode: CalendarMode;
+  renderEvent: RenderEvent<T>;
+}): ReactElement {
+  const RenderEventComponent = renderEvent;
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: x.value }, { translateY: y.value }],
+    width: w.value,
+    height: h.value,
+    opacity: visible.value,
+  }));
+  return (
+    <Animated.View style={[styles.eventBox, styles.dragGhost, style]} pointerEvents="none">
+      <RenderEventComponent event={event} mode={mode} boxHeight={h} onPress={noop} />
+    </Animated.View>
+  );
+}
 
 /**
  * Called when an event is dragged (moved or resized) to new start/end times.
@@ -244,7 +301,12 @@ function AnimatedEventBox<T>({
   // rather than over the whole context object (which also holds a JS callback).
   const edgePaging = useContext(EdgePagingContext);
   const pagerLeftSV = edgePaging?.pagerLeft;
+  const pagerTopSV = edgePaging?.pagerTop;
   const pagerWidthSV = edgePaging?.pagerWidth;
+  const ghostXSV = edgePaging?.ghostX;
+  const ghostYSV = edgePaging?.ghostY;
+  const commitLiftedDrop = edgePaging?.commitLiftedDrop;
+  const cancelLift = edgePaging?.cancelLift;
   // Drag-to-move/resize. Native picks the event up on long-press (so a tap or
   // scroll isn't hijacked); web activates after a small drag threshold, so a
   // plain click still selects and a right-click still opens a context menu.
@@ -265,9 +327,14 @@ function AnimatedEventBox<T>({
   // timer can carry the event's time onto the new page.
   const edgeDir = useSharedValue(0);
   const liveTransY = useSharedValue(0);
-  // 1 once an edge dwell has paged this drag, so the gesture's onEnd doesn't also
-  // commit a clamped in-view drop. A shared value so the onEnd worklet can read it.
-  const edgePaged = useSharedValue(0);
+  // 1 once the event has been lifted into the floating ghost (cross-week drag),
+  // plus where in the box it was grabbed and the live finger position, so the
+  // ghost can be seeded from the JS dwell timer and track the finger after.
+  const lifted = useSharedValue(0);
+  const grabX = useSharedValue(0);
+  const grabY = useSharedValue(0);
+  const liveAbsX = useSharedValue(0);
+  const liveAbsY = useSharedValue(0);
 
   // Pull the geometry out as primitives so the worklets below close over plain
   // numbers, not `positioned` itself. Referencing `positioned.*` inside a
@@ -376,27 +443,39 @@ function AnimatedEventBox<T>({
       disarmEdge();
       dwellTimer.current = setTimeout(() => {
         dwellTimer.current = null;
-        if (edgePaged.value) return;
-        edgePaged.value = 1;
+        if (!edgePaging) return;
         // Freeze the pager's own swipe before paging: on native a programmatic
         // scroll is deferred while the touch is tracked, so without this the view
         // wouldn't advance until the finger lifts.
-        edgePaging?.lockScroll(true);
-        const minuteDelta = snapDeltaMinutes(liveTransY.value, cellHeight.value, snapMinutes);
-        const weekDelta = dir * daysPerPage * MINUTES_PER_DAY;
-        commitDrag(minuteDelta + weekDelta, minuteDelta + weekDelta);
+        edgePaging.lockScroll(true);
+        // First edge fire: lift the event into the floating ghost. It must NOT
+        // commit here — committing relocates the event off this page, which
+        // unmounts the dragging box and kills the gesture. Instead the ghost
+        // (seeded at the current finger position) carries the event across the
+        // page, and the drop commits on release. The source box stays mounted, so
+        // the same gesture keeps tracking after the page changes.
+        if (!lifted.value) {
+          lifted.value = 1;
+          edgePaging.ghostW.value = width;
+          edgePaging.ghostH.value = boxHeight.value;
+          edgePaging.ghostX.value = liveAbsX.value - grabX.value - edgePaging.pagerLeft.value;
+          edgePaging.ghostY.value = liveAbsY.value - grabY.value - edgePaging.pagerTop.value;
+          edgePaging.ghostVisible.value = 1;
+          edgePaging.beginLift(latest.current.event as CalendarEvent<unknown>);
+        }
         onEdgeAdvance?.(dir);
       }, EDGE_DWELL_MS);
     },
     [
       disarmEdge,
-      edgePaged,
       edgePaging,
-      snapMinutes,
-      cellHeight,
-      liveTransY,
-      daysPerPage,
-      commitDrag,
+      lifted,
+      width,
+      boxHeight,
+      liveAbsX,
+      liveAbsY,
+      grabX,
+      grabY,
       onEdgeAdvance,
     ],
   );
@@ -404,15 +483,30 @@ function AnimatedEventBox<T>({
   const moveGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .enabled(draggable)
-      .onStart(() => {
+      .onStart((event) => {
         dragZ.value = DRAG_EVENT_Z;
         edgeDir.value = 0;
-        edgePaged.value = 0;
+        lifted.value = 0;
+        // Where in the box the finger grabbed, and the live finger position, so
+        // the ghost can be seeded and tracked in window space (see armEdge).
+        grabX.value = event.x;
+        grabY.value = event.y;
+        liveAbsX.value = event.absoluteX;
+        liveAbsY.value = event.absoluteY;
         runOnJS(notifyDragStart)();
       })
       .onUpdate((event) => {
-        moveOffset.value = event.translationY;
-        moveOffsetX.value = event.translationX;
+        liveAbsX.value = event.absoluteX;
+        liveAbsY.value = event.absoluteY;
+        // Once lifted, the box itself has paged off-screen; the ghost (a sibling of
+        // the pager) tracks the finger in pager-local space instead.
+        if (lifted.value && pagerLeftSV && pagerTopSV && ghostXSV && ghostYSV) {
+          ghostXSV.value = event.absoluteX - grabX.value - pagerLeftSV.value;
+          ghostYSV.value = event.absoluteY - grabY.value - pagerTopSV.value;
+        } else {
+          moveOffset.value = event.translationY;
+          moveOffsetX.value = event.translationX;
+        }
         liveTransY.value = event.translationY;
         // Dragging the finger to the pager's left/right edge arms an edge dwell
         // that pages the view. Measured by absolute finger position (not by how
@@ -429,9 +523,17 @@ function AnimatedEventBox<T>({
         }
       })
       .onEnd((event) => {
-        // The edge dwell already paged and committed the move; don't also commit
-        // the clamped in-view drop.
-        if (edgePaged.value) return;
+        // Cross-week drop: the event was lifted onto another page. Commit at the
+        // ghost's column on the now-visible page (its top-left X) shifted in time
+        // by the vertical drag; the parent resolves the day from its own columns.
+        if (lifted.value && ghostXSV && commitLiftedDrop) {
+          const minuteDelta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
+          runOnJS(commitLiftedDrop)(ghostXSV.value, minuteDelta);
+          moveOffset.value = 0;
+          moveOffsetX.value = 0;
+          lifted.value = 0;
+          return;
+        }
         const minuteDelta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
         // Map the horizontal drag to whole day columns, clamped so the event
         // can't leave the visible range.
@@ -457,6 +559,11 @@ function AnimatedEventBox<T>({
       })
       .onFinalize(() => {
         dragZ.value = 0;
+        // A cancelled drag (no onEnd) that had lifted must still clear the ghost.
+        if (lifted.value && cancelLift) {
+          runOnJS(cancelLift)();
+          lifted.value = 0;
+        }
         runOnJS(releaseEdge)();
       });
     // Native: long-press to pick up. Web: activate past a small drag in either
@@ -474,9 +581,18 @@ function AnimatedEventBox<T>({
     moveOffsetX,
     dragZ,
     edgeDir,
-    edgePaged,
+    lifted,
+    grabX,
+    grabY,
+    liveAbsX,
+    liveAbsY,
     pagerLeftSV,
+    pagerTopSV,
     pagerWidthSV,
+    ghostXSV,
+    ghostYSV,
+    commitLiftedDrop,
+    cancelLift,
     liveTransY,
     dayWidth,
     dayIndex,
@@ -1686,15 +1802,99 @@ function TimeGridInner<T>({
   const seedDefaultY =
     Math.max(0, scrollOffsetMinutes / MINUTES_PER_HOUR - clampedMinHour) * hourHeight;
   const scrollY = useSharedValue(seedDefaultY);
-  // Pager edges in window space (refined on layout) and a swipe-scroll freeze,
+  // Pager frame in window space (refined on layout) and a swipe-scroll freeze,
   // shared with the event drag worklets through EdgePagingContext so a cross-week
   // edge drag can detect the edges and page the view live under a held finger.
   const pagerLeft = useSharedValue(0);
+  const pagerTop = useSharedValue(0);
   const pagerWidth = useSharedValue(width);
   const [edgePagingLock, setEdgePagingLock] = useState(false);
+  // Floating "held" ghost that carries a dragged event across a page change (see
+  // EdgePaging): pager-local top-left, size, visibility, and the event to draw.
+  const ghostX = useSharedValue(0);
+  const ghostY = useSharedValue(0);
+  const ghostW = useSharedValue(0);
+  const ghostH = useSharedValue(0);
+  const ghostVisible = useSharedValue(0);
+  const [liftedEvent, setLiftedEvent] = useState<CalendarEvent<T> | null>(null);
+  const liftedEventRef = useRef<CalendarEvent<T> | null>(null);
+  // The drop commit needs the live page's columns and handler; keep them in a ref
+  // refreshed each render so the callbacks below stay identity-stable. A changing
+  // context value would re-memo every event's gesture and tear down an in-progress
+  // drag (the gesture must outlive the page change to finish a cross-week drop).
+  const dropRef = useRef({
+    headerDays: [] as Date[],
+    containerWidth,
+    hourColumnWidth,
+    snapMinutes: Math.max(1, dragStepMinutes),
+    onDragEvent,
+  });
+  const beginLift = useCallback((event: CalendarEvent<unknown>) => {
+    liftedEventRef.current = event as CalendarEvent<T>;
+    setLiftedEvent(event as CalendarEvent<T>);
+  }, []);
+  const clearLift = useCallback(() => {
+    // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+    ghostVisible.value = 0;
+    liftedEventRef.current = null;
+    setLiftedEvent(null);
+    setEdgePagingLock(false);
+  }, [ghostVisible]);
+  const commitLiftedDrop = useCallback(
+    (ghostLocalX: number, minuteDelta: number) => {
+      const {
+        headerDays: days,
+        containerWidth: cw,
+        hourColumnWidth: hcw,
+        snapMinutes: snap,
+        onDragEvent: onDrag,
+      } = dropRef.current;
+      const ev = liftedEventRef.current;
+      clearLift();
+      if (!ev || !onDrag || days.length === 0) return;
+      // The event lands on the column under the ghost's left edge, shifted in time
+      // by the vertical drag (minuteDelta). resolveDraggedBounds moves both ends by
+      // the same amount, so the duration is preserved.
+      const dayWidth = (cw - hcw) / days.length;
+      const col = Math.min(
+        Math.max(Math.floor((ghostLocalX - hcw) / dayWidth), 0),
+        days.length - 1,
+      );
+      const dayDelta = differenceInCalendarDays(days[col], ev.start);
+      const total = dayDelta * MINUTES_PER_DAY + minuteDelta;
+      const next = resolveDraggedBounds(ev.start, ev.end, total, total, snap);
+      if (next) onDrag(ev, next.start, next.end);
+    },
+    [clearLift],
+  );
   const edgePaging = useMemo<EdgePaging>(
-    () => ({ pagerLeft, pagerWidth, lockScroll: setEdgePagingLock }),
-    [pagerLeft, pagerWidth],
+    () => ({
+      pagerLeft,
+      pagerTop,
+      pagerWidth,
+      lockScroll: setEdgePagingLock,
+      ghostX,
+      ghostY,
+      ghostW,
+      ghostH,
+      ghostVisible,
+      beginLift,
+      commitLiftedDrop,
+      cancelLift: clearLift,
+    }),
+    [
+      pagerLeft,
+      pagerTop,
+      pagerWidth,
+      ghostX,
+      ghostY,
+      ghostW,
+      ghostH,
+      ghostVisible,
+      beginLift,
+      commitLiftedDrop,
+      clearLift,
+    ],
   );
   // Plain mirror of the last settled vertical offset. A page that mounts after a
   // scroll seeds its contentOffset here instead of the default, so it appears at the
@@ -1769,6 +1969,16 @@ function TimeGridInner<T>({
       ),
     [mode, pageDates, activeIndex, date, weekStartsOn, numberOfDays, isRTL, weekEndsOn, hiddenDays],
   );
+
+  // Keep the cross-week drop's page columns + handler current without changing the
+  // identity-stable EdgePaging callbacks (see dropRef).
+  dropRef.current = {
+    headerDays,
+    containerWidth,
+    hourColumnWidth,
+    snapMinutes: Math.max(1, dragStepMinutes),
+    onDragEvent,
+  };
 
   const handleViewableItemsChanged = useCallback(
     (info: OnViewableItemsChangedInfo<Date>) => {
@@ -2059,11 +2269,14 @@ function TimeGridInner<T>({
               setPageHeight(event.nativeEvent.layout.height);
               setContainerWidth(event.nativeEvent.layout.width);
               setMeasured(true);
-              // Record the pager's window-space left/width for the drag worklets'
-              // edge detection (layout gives parent-relative coords, not window).
-              pagerRef.current?.measureInWindow((x, _y, w) => {
+              // Record the pager's window-space frame for the drag worklets' edge
+              // detection and ghost placement (layout gives parent-relative coords,
+              // not window).
+              pagerRef.current?.measureInWindow((x, y, w) => {
                 // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
                 pagerLeft.value = x;
+                // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+                pagerTop.value = y;
                 // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
                 pagerWidth.value = w;
               });
@@ -2102,6 +2315,18 @@ function TimeGridInner<T>({
               onViewableItemsChanged={handleViewableItemsChanged}
               renderItem={renderItem}
             />
+            {liftedEvent ? (
+              <DragGhost
+                x={ghostX}
+                y={ghostY}
+                w={ghostW}
+                h={ghostH}
+                visible={ghostVisible}
+                event={liftedEvent}
+                mode={mode}
+                renderEvent={labeledRenderEvent}
+              />
+            ) : null}
           </View>
         </View>
       </EdgePagingContext.Provider>
@@ -2398,6 +2623,13 @@ const styles = StyleSheet.create({
     // Border-box padding insets the visible box (the flex child) on all sides,
     // giving a small gap without touching the slot geometry above.
     padding: EVENT_GAP,
+  },
+  // The cross-week drag ghost: pinned to the pager's top-left, moved into place by
+  // its transform, and floated above every page so it stays visible across a page.
+  dragGhost: {
+    top: 0,
+    left: 0,
+    zIndex: DRAG_EVENT_Z + 1,
   },
   nowIndicator: {
     position: "absolute",
