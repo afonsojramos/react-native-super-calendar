@@ -72,18 +72,15 @@ import * as Haptics from "expo-haptics";
 
 ### Move an event to another week
 
-Drag an event past the edge of the visible day columns and hold briefly, and the
-view pages to the previous/next period so you can reschedule across the boundary.
-Both renderers need `onChangeDate` set (they already do for paging); it only fires
-on a deliberate dwell at the very edge, so it won't trip a normal in-view drag.
+While moving an event, drag it past the left or right edge of the day columns and
+hold briefly. The view pages to the previous/next period and the event lifts into
+a floating copy that keeps following your finger, so the drag stays live across the
+page change and you drop it on any day of the newly revealed week. Both renderers
+need `onChangeDate` set (they already do for paging); the page only advances on a
+deliberate dwell at the very edge, so a normal in-view drag never trips it.
 
-- **Web:** the drag stays live across the page change, so you drop on any day in
-  the newly revealed range (and it keeps paging while you hold there).
-- **React Native:** holding at the edge pages the view once and carries the event
-  onto it — same weekday, keeping whatever time the drag reached; drag again on
-  the new page to fine-tune the day. (The continuous per-day drop the web renderer
-  does needs a per-frame overlay above the pager that isn't reliable on the native
-  gesture stack, so native takes this simpler, robust path.)
+On native the pager's own swipe is frozen for the moment it pages, so the view
+advances under your held finger instead of waiting for you to lift.
 
 In-view move, cross-day within the visible columns, and resize all work by gesture
 as usual on both.
