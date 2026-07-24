@@ -125,6 +125,13 @@ const DRAG_ACTIVATE_PX = 8;
 const RESIZE_HANDLE_HEIGHT = 14;
 // Default minutes a drag snaps to when `dragStepMinutes` isn't set.
 const DEFAULT_DRAG_STEP_MINUTES = 15;
+// zIndex applied to an event while it's being dragged/resized so it sits above
+// every other event (RN stacks siblings by order, so without this a dragged box
+// moved over a later event would fall behind it).
+const DRAG_EVENT_Z = 100;
+// How long to hold the dragged event past the visible columns before the view
+// pages one period toward that edge.
+const EDGE_DWELL_MS = 500;
 
 /**
  * Called when an event is dragged (moved or resized) to new start/end times.
@@ -174,6 +181,9 @@ type AnimatedEventBoxProps<T> = {
   onDragEvent?: EventDragHandler<T>;
   onDragStart?: EventDragStartHandler<T>;
   showDragHandle: boolean;
+  // Page the view one period (dir -1/+1) when the event is dragged past the
+  // visible columns and held there. Absent disables edge auto-advance.
+  onEdgeAdvance?: (dir: number) => void;
 };
 
 function AnimatedEventBox<T>({
@@ -194,6 +204,7 @@ function AnimatedEventBox<T>({
   onLongPress,
   onDragEvent,
   onDragStart,
+  onEdgeAdvance,
   showDragHandle,
 }: AnimatedEventBoxProps<T>) {
   const RenderEventComponent = renderEvent;
@@ -211,6 +222,17 @@ function AnimatedEventBox<T>({
   const moveOffset = useSharedValue(0);
   const moveOffsetX = useSharedValue(0);
   const resizeDelta = useSharedValue(0);
+  // Raised to DRAG_EVENT_Z while a gesture is active so the dragged event floats
+  // above all the others, then back to 0 when it settles.
+  const dragZ = useSharedValue(0);
+  // Edge auto-advance: which side the drag has pushed past the visible columns
+  // (-1 left / 0 none / +1 right), and the live vertical drag so the JS dwell
+  // timer can carry the event's time onto the new page.
+  const edgeDir = useSharedValue(0);
+  const liveTransY = useSharedValue(0);
+  // 1 once an edge dwell has paged this drag, so the gesture's onEnd doesn't also
+  // commit a clamped in-view drop. A shared value so the onEnd worklet can read it.
+  const edgePaged = useSharedValue(0);
 
   // Pull the geometry out as primitives so the worklets below close over plain
   // numbers, not `positioned` itself. Referencing `positioned.*` inside a
@@ -234,6 +256,7 @@ function AnimatedEventBox<T>({
       top: (startHours - minHour) * cellHeight.value + moveOffset.value,
       height: boxHeight.value,
       transform: [{ translateX: moveOffsetX.value }],
+      zIndex: dragZ.value,
     }),
     [startHours, durationHours, minHour],
   );
@@ -295,17 +318,73 @@ function AnimatedEventBox<T>({
     latest.current.onDragStart?.(latest.current.event);
   }, []);
 
+  // Edge auto-advance dwell. Dragging the event past the visible columns and
+  // holding there pages the view one period and carries the event onto it: same
+  // weekday, keeping whatever time the vertical drag has reached. It fires once
+  // per drag (the box unmounts as the page changes), matching "hold at the edge
+  // to move to the next/previous week"; the tested commit path does the move.
+  const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disarmEdge = useCallback(() => {
+    if (dwellTimer.current) {
+      clearTimeout(dwellTimer.current);
+      dwellTimer.current = null;
+    }
+  }, []);
+  const armEdge = useCallback(
+    (dir: number) => {
+      disarmEdge();
+      dwellTimer.current = setTimeout(() => {
+        dwellTimer.current = null;
+        if (edgePaged.value) return;
+        edgePaged.value = 1;
+        const minuteDelta = snapDeltaMinutes(liveTransY.value, cellHeight.value, snapMinutes);
+        const weekDelta = dir * daysPerPage * MINUTES_PER_DAY;
+        commitDrag(minuteDelta + weekDelta, minuteDelta + weekDelta);
+        onEdgeAdvance?.(dir);
+      }, EDGE_DWELL_MS);
+    },
+    [
+      disarmEdge,
+      edgePaged,
+      snapMinutes,
+      cellHeight,
+      liveTransY,
+      daysPerPage,
+      commitDrag,
+      onEdgeAdvance,
+    ],
+  );
+
   const moveGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .enabled(draggable)
       .onStart(() => {
+        dragZ.value = DRAG_EVENT_Z;
+        edgeDir.value = 0;
+        edgePaged.value = 0;
         runOnJS(notifyDragStart)();
       })
       .onUpdate((event) => {
         moveOffset.value = event.translationY;
         moveOffsetX.value = event.translationX;
+        liveTransY.value = event.translationY;
+        // Dragging past the first/last visible column arms an edge dwell that
+        // pages the view. `onEdgeAdvance` is only wired when paging is available.
+        if (onEdgeAdvance) {
+          const rawDayDelta = dayWidth > 0 ? Math.round(event.translationX / dayWidth) : 0;
+          const target = dayIndex + rawDayDelta;
+          const dir = target > dayCount - 1 ? 1 : target < 0 ? -1 : 0;
+          if (dir !== edgeDir.value) {
+            edgeDir.value = dir;
+            if (dir === 0) runOnJS(disarmEdge)();
+            else runOnJS(armEdge)(dir);
+          }
+        }
       })
       .onEnd((event) => {
+        // The edge dwell already paged and committed the move; don't also commit
+        // the clamped in-view drop.
+        if (edgePaged.value) return;
         const minuteDelta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
         // Map the horizontal drag to whole day columns, clamped so the event
         // can't leave the visible range.
@@ -328,6 +407,10 @@ function AnimatedEventBox<T>({
         const calendarDayDelta = dayOrdinals[targetDay] - dayOrdinals[dayIndex];
         const totalDelta = minuteDelta + calendarDayDelta * MINUTES_PER_DAY;
         runOnJS(commitDrag)(totalDelta, totalDelta);
+      })
+      .onFinalize(() => {
+        dragZ.value = 0;
+        runOnJS(disarmEdge)();
       });
     // Native: long-press to pick up. Web: activate past a small drag in either
     // axis so clicks/right-clicks pass through but horizontal drags still move.
@@ -342,12 +425,19 @@ function AnimatedEventBox<T>({
     cellHeight,
     moveOffset,
     moveOffsetX,
+    dragZ,
+    edgeDir,
+    edgePaged,
+    liveTransY,
     dayWidth,
     dayIndex,
     dayCount,
     dayOrdinals,
     commitDrag,
     notifyDragStart,
+    onEdgeAdvance,
+    armEdge,
+    disarmEdge,
   ]);
 
   const resizeGesture = useMemo(
@@ -355,6 +445,7 @@ function AnimatedEventBox<T>({
       Gesture.Pan()
         .enabled(resizable)
         .onStart(() => {
+          dragZ.value = DRAG_EVENT_Z;
           runOnJS(notifyDragStart)();
         })
         .onUpdate((event) => {
@@ -368,8 +459,11 @@ function AnimatedEventBox<T>({
           }
           resizeDelta.value = (delta / MINUTES_PER_HOUR) * cellHeight.value;
           runOnJS(commitDrag)(0, delta);
+        })
+        .onFinalize(() => {
+          dragZ.value = 0;
         }),
-    [resizable, snapMinutes, cellHeight, resizeDelta, commitDrag, notifyDragStart],
+    [resizable, snapMinutes, cellHeight, resizeDelta, dragZ, commitDrag, notifyDragStart],
   );
 
   const handlePress = () => onPress(positioned.event);
@@ -680,6 +774,7 @@ type TimetablePageProps<T> = {
   onPressCell?: (date: Date) => void;
   onLongPressCell?: (date: Date) => void;
   onCreateEvent?: (start: Date, end: Date) => void;
+  onEdgeAdvance?: (dir: number) => void;
 };
 
 // A single date's grid: the pinch-zoomable, vertically-scrolling time column.
@@ -730,6 +825,7 @@ function TimetablePageInner<T>({
   onPressCell,
   onLongPressCell,
   onCreateEvent,
+  onEdgeAdvance,
 }: TimetablePageProps<T>) {
   const theme = useCalendarTheme();
   const slot = useSlots<TimeGridSlot>();
@@ -1266,6 +1362,7 @@ function TimetablePageInner<T>({
                       onLongPress={onLongPressEvent}
                       onDragEvent={onDragEvent}
                       onDragStart={onDragStart}
+                      onEdgeAdvance={onEdgeAdvance}
                     />
                   );
                 }),
@@ -1810,6 +1907,7 @@ function TimeGridInner<T>({
           onPressCell={handlePressCell}
           onLongPressCell={onLongPressCell}
           onCreateEvent={onCreateEvent}
+          onEdgeAdvance={goToPage}
         />
       </View>
     ),
@@ -1854,6 +1952,7 @@ function TimeGridInner<T>({
       handlePressCell,
       onLongPressCell,
       onCreateEvent,
+      goToPage,
       hiddenDays,
       now,
       timeZone,
