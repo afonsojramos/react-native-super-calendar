@@ -148,6 +148,9 @@ export type EventDragStartHandler<T> = (event: CalendarEvent<T>) => void;
 // for the drag-to-page hand-off, and how long to dwell there before paging.
 const EDGE_ZONE_PX = 40;
 const EDGE_DWELL_MS = 600;
+const EDGE_REPEAT_MS = 600;
+// The held ghost hangs just below the finger so the drop point stays visible.
+const HELD_GHOST_GRAB_OFFSET = 16;
 // Stable no-op for the non-interactive drag ghost's onPress.
 const noop = () => {};
 
@@ -169,28 +172,17 @@ type HeldDragApi<T> = {
   /** The grid's measured left/right screen x (the day-columns band lives within). */
   frameLeft: SharedValue<number>;
   frameRight: SharedValue<number>;
-  /**
-   * Lift `event` (identified by `key`) into the overlay; `grabX`/`grabY` are the
-   * touch offset within the box, so the ghost sits under the finger. JS thread.
-   */
+  /** Lift `event` (identified by `key`) into the overlay at the finger; JS thread. */
   pickup: (
     event: CalendarEvent<T>,
     key: string,
     absX: number,
     absY: number,
-    grabX: number,
-    grabY: number,
     w: number,
     h: number,
   ) => void;
-  /**
-   * Drop the held event from the finishing gesture (in-page only): the day comes
-   * from the finger, the time shifts by the vertical drag so the grab offset is
-   * kept. JS thread.
-   */
-  dropFromGesture: (absX: number, translationY: number) => void;
-  /** Snap an interrupted (cancelled) in-view drag back without committing. */
-  cancelInView: () => void;
+  /** Drop the held event where the gesture ended (in-page); JS thread. */
+  dropFromGesture: (absX: number, absY: number) => void;
   /** Arm / cancel the edge dwell timer; JS thread. */
   arm: (dir: number) => void;
   disarm: () => void;
@@ -361,8 +353,8 @@ function AnimatedEventBox<T>({
   // thread (never crossing a Date into a worklet); the width/height come from the
   // worklet as plain numbers.
   const doPickup = useCallback(
-    (absX: number, absY: number, grabX: number, grabY: number, w: number, h: number) => {
-      heldDrag?.pickup(latest.current.event, boxKey, absX, absY, grabX, grabY, w, h);
+    (absX: number, absY: number, w: number, h: number) => {
+      heldDrag?.pickup(latest.current.event, boxKey, absX, absY, w, h);
     },
     [heldDrag, boxKey],
   );
@@ -379,16 +371,7 @@ function AnimatedEventBox<T>({
           heldDrag.absY.value = event.absoluteY;
           heldDrag.edgeSide.value = 0;
           runOnJS(notifyDragStart)();
-          // `event.x`/`event.y` are the touch offset within the box, so the ghost
-          // sits under the finger where it was grabbed.
-          runOnJS(doPickup)(
-            event.absoluteX,
-            event.absoluteY,
-            event.x,
-            event.y,
-            width,
-            boxHeight.value,
-          );
+          runOnJS(doPickup)(event.absoluteX, event.absoluteY, width, boxHeight.value);
         })
         .onUpdate((event) => {
           heldDrag.absX.value = event.absoluteX;
@@ -411,10 +394,8 @@ function AnimatedEventBox<T>({
             else runOnJS(heldDrag.arm)(side);
           }
         })
-        .onEnd((event, success) => {
-          // A cancelled/interrupted in-view drag must snap back, not commit.
-          if (success) runOnJS(heldDrag.dropFromGesture)(event.absoluteX, event.translationY);
-          else runOnJS(heldDrag.cancelInView)();
+        .onEnd((event) => {
+          runOnJS(heldDrag.dropFromGesture)(event.absoluteX, event.absoluteY);
         });
     } else {
       pan
@@ -1889,9 +1870,6 @@ function TimeGridInner<T>({
   const heldOriginY = useSharedValue(0);
   const heldGhostW = useSharedValue(0);
   const heldGhostH = useSharedValue(0);
-  // Touch offset within the grabbed box, so the ghost hangs under the finger.
-  const heldGrabX = useSharedValue(0);
-  const heldGrabY = useSharedValue(0);
   const [held, setHeld] = useState<{
     event: CalendarEvent<T>;
     key: string;
@@ -1946,42 +1924,43 @@ function TimeGridInner<T>({
     setHeld(null);
   }, [heldActive, heldEdgeSide]);
 
-  // The visible-lane index under a screen x (the finger points at the day).
-  const laneAtX = (absX: number, lanes: Date[]) => {
-    const ctx = dropCtxRef.current;
-    const dayW = (ctx.containerWidth - ctx.hourColumnWidth) / lanes.length || 1;
-    return Math.min(Math.max(Math.floor((absX - heldFrameLeft.value) / dayW), 0), lanes.length - 1);
-  };
-  const commit = (event: CalendarEvent<T>, day: Date, startMinutes: number, durationMs: number) => {
-    const ctx = dropCtxRef.current;
-    const durationMin = durationMs / 60_000;
-    const lo = ctx.minHour * 60;
-    const hi = Math.max(lo, ctx.maxHour * 60 - durationMin);
-    const minutes = Math.max(lo, Math.min(Math.round(startMinutes / ctx.snap) * ctx.snap, hi));
-    const start = new Date(day);
-    start.setHours(0, 0, 0, 0);
-    start.setMinutes(minutes);
-    const end = new Date(start.getTime() + durationMs);
-    ctx.onDragEvent?.(event, start, end);
-    clearHeld();
-  };
+  const commitHeldDrop = useCallback(
+    (absX: number, absY: number) => {
+      const current = heldRef.current;
+      if (!current) return;
+      const ctx = dropCtxRef.current;
+      const lanes = ctx.headerDays;
+      if (lanes.length === 0) {
+        clearHeld();
+        return;
+      }
+      const dayW = (ctx.containerWidth - ctx.hourColumnWidth) / lanes.length || 1;
+      const idx = Math.min(
+        Math.max(Math.floor((absX - heldFrameLeft.value) / dayW), 0),
+        lanes.length - 1,
+      );
+      const day = lanes[idx];
+      const rawMin =
+        (ctx.minHour + (absY - heldOriginY.value + scrollY.value) / (cellHeight.value || 1)) * 60;
+      const durationMin = current.durationMs / 60_000;
+      const lo = ctx.minHour * 60;
+      const hi = Math.max(lo, ctx.maxHour * 60 - durationMin);
+      const minutes = Math.max(lo, Math.min(Math.round(rawMin / ctx.snap) * ctx.snap, hi));
+      const start = new Date(day);
+      start.setHours(0, 0, 0, 0);
+      start.setMinutes(minutes);
+      const end = new Date(start.getTime() + current.durationMs);
+      ctx.onDragEvent?.(current.event, start, end);
+      clearHeld();
+    },
+    [heldFrameLeft, heldOriginY, scrollY, cellHeight, clearHeld],
+  );
 
   const pickupHeld = useCallback(
-    (
-      event: CalendarEvent<T>,
-      key: string,
-      absX: number,
-      absY: number,
-      grabX: number,
-      grabY: number,
-      w: number,
-      h: number,
-    ) => {
+    (event: CalendarEvent<T>, key: string, absX: number, absY: number, w: number, h: number) => {
       measurePagerFrame();
       heldAbsX.value = absX;
       heldAbsY.value = absY;
-      heldGrabX.value = grabX;
-      heldGrabY.value = grabY;
       heldGhostW.value = w;
       heldGhostH.value = h;
       heldEdgeSide.value = 0;
@@ -1989,62 +1968,17 @@ function TimeGridInner<T>({
       pagedSincePickup.current = false;
       setHeld({ event, key, durationMs: event.end.getTime() - event.start.getTime() });
     },
-    [
-      measurePagerFrame,
-      heldAbsX,
-      heldAbsY,
-      heldGrabX,
-      heldGrabY,
-      heldGhostW,
-      heldGhostH,
-      heldEdgeSide,
-      heldActive,
-    ],
+    [measurePagerFrame, heldAbsX, heldAbsY, heldGhostW, heldGhostH, heldEdgeSide, heldActive],
   );
 
-  // Finishing gesture (always in-page: a mid-drag page hand-off routes to the
-  // tap below). Day from the finger, time shifted by the vertical drag so the
-  // grab offset and duration are preserved.
   const dropFromGesture = useCallback(
-    (absX: number, translationY: number) => {
-      if (pagedSincePickup.current) return; // paged: wait for the tap-to-place
-      const current = heldRef.current;
-      if (!current) return;
-      const lanes = dropCtxRef.current.headerDays;
-      if (lanes.length === 0) {
-        clearHeld();
-        return;
-      }
-      const day = lanes[laneAtX(absX, lanes)];
-      const deltaMin = (translationY / (cellHeight.value || 1)) * 60;
-      const origMin = current.event.start.getHours() * 60 + current.event.start.getMinutes();
-      commit(current.event, day, origMin + deltaMin, current.durationMs);
+    (absX: number, absY: number) => {
+      // After a dwell paged the view the source box has unmounted, so this
+      // gesture can't finish the drop; leave the event held for a tap to place.
+      if (pagedSincePickup.current) return;
+      commitHeldDrop(absX, absY);
     },
-    [cellHeight, clearHeld],
-  );
-
-  // Interrupted (cancelled) in-view drag: snap back without committing. When
-  // paged we're intentionally holding for a tap, so leave it be.
-  const cancelInView = useCallback(() => {
-    if (!pagedSincePickup.current) clearHeld();
-  }, [clearHeld]);
-
-  // Tap after a page change places the event: the tapped day, keeping the
-  // event's original time. Tapping off the columns band cancels the hold.
-  const dropByTap = useCallback(
-    (absX: number) => {
-      const current = heldRef.current;
-      if (!current) return;
-      const lanes = dropCtxRef.current.headerDays;
-      if (lanes.length === 0 || absX < heldFrameLeft.value || absX > heldFrameRight.value) {
-        clearHeld();
-        return;
-      }
-      const day = lanes[laneAtX(absX, lanes)];
-      const origMin = current.event.start.getHours() * 60 + current.event.start.getMinutes();
-      commit(current.event, day, origMin, current.durationMs);
-    },
-    [heldFrameLeft, heldFrameRight, clearHeld],
+    [commitHeldDrop],
   );
 
   const disarmEdge = useCallback(() => {
@@ -2056,20 +1990,15 @@ function TimeGridInner<T>({
   const armEdge = useCallback(
     (dir: number) => {
       disarmEdge();
-      // Page exactly once per edge entry. The dwell doesn't re-arm: the source box
-      // unmounts on the page change, so `onUpdate` (and thus `disarmEdge`) stops
-      // firing — a repeating timer would then run away through the weeks. The tap
-      // that places the event follows on the revealed page.
-      dwellTimer.current = setTimeout(() => {
-        dwellTimer.current = null;
-        // On web the viewability settle path is skipped, so `pendingScrollIndexRef`
-        // never clears; don't let it latch and block paging there.
-        const settled = isWeb || pendingScrollIndexRef.current == null;
-        if (settled && !pagedSincePickup.current) {
+      const tick = () => {
+        // Don't outrun a settling programmatic scroll, or a fast repeat lands short.
+        if (pendingScrollIndexRef.current == null) {
           pagedSincePickup.current = true;
           goToPageRef.current(dir);
         }
-      }, EDGE_DWELL_MS);
+        dwellTimer.current = setTimeout(tick, EDGE_REPEAT_MS);
+      };
+      dwellTimer.current = setTimeout(tick, EDGE_DWELL_MS);
     },
     [disarmEdge],
   );
@@ -2084,7 +2013,6 @@ function TimeGridInner<T>({
       frameRight: heldFrameRight,
       pickup: pickupHeld,
       dropFromGesture,
-      cancelInView,
       arm: armEdge,
       disarm: disarmEdge,
     }),
@@ -2097,7 +2025,6 @@ function TimeGridInner<T>({
       heldFrameRight,
       pickupHeld,
       dropFromGesture,
-      cancelInView,
       armEdge,
       disarmEdge,
     ],
@@ -2111,20 +2038,19 @@ function TimeGridInner<T>({
       Gesture.Tap()
         .enabled(held != null)
         .onEnd((e) => {
-          runOnJS(dropByTap)(e.absoluteX);
+          runOnJS(commitHeldDrop)(e.absoluteX, e.absoluteY);
         }),
-    [held, dropByTap],
+    [held, commitHeldDrop],
   );
 
-  // The floating ghost follows the finger, offset by the grab point so it stays
-  // pinned where it was picked up (coords are screen-relative to the pager).
+  // The floating ghost follows the finger (screen coords, offset into the pager).
   const heldGhostStyle = useAnimatedStyle(() => ({
     opacity: heldActive.value ? 0.9 : 0,
     width: heldGhostW.value,
     height: heldGhostH.value,
     transform: [
-      { translateX: heldAbsX.value - heldGrabX.value - heldOriginX.value },
-      { translateY: heldAbsY.value - heldGrabY.value - heldOriginY.value },
+      { translateX: heldAbsX.value - heldOriginX.value - heldGhostW.value / 2 },
+      { translateY: heldAbsY.value - heldOriginY.value - HELD_GHOST_GRAB_OFFSET },
     ],
   }));
 
