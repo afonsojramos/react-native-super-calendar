@@ -321,10 +321,8 @@ function AnimatedEventBox<T>({
   // above all the others, then back to 0 when it settles.
   const dragZ = useSharedValue(0);
   // Edge auto-advance: which side the drag has pushed past the visible columns
-  // (-1 left / 0 none / +1 right), and the live vertical drag so the JS dwell
-  // timer can carry the event's time onto the new page.
+  // (-1 left / 0 none / +1 right).
   const edgeDir = useSharedValue(0);
-  const liveTransY = useSharedValue(0);
   // 1 once the event has been lifted into the floating ghost (cross-week drag),
   // plus where in the box it was grabbed and the live finger position, so the
   // ghost can be seeded from the JS dwell timer and track the finger after.
@@ -505,7 +503,6 @@ function AnimatedEventBox<T>({
           moveOffset.value = event.translationY;
           moveOffsetX.value = event.translationX;
         }
-        liveTransY.value = event.translationY;
         // Dragging the finger to the pager's left/right edge arms an edge dwell
         // that pages the view. Measured by absolute finger position (not by how
         // many columns the drag crossed), so an event in any column can reach
@@ -554,9 +551,8 @@ function AnimatedEventBox<T>({
         // including the cancel RNGH reports when the source page moves under the
         // touch, so committing from the last finger position (ghost column + the
         // vertical drag) guarantees the drop lands instead of silently vanishing.
-        if (lifted.value && ghostXSV && commitLiftedDrop) {
-          const minuteDelta = snapDeltaMinutes(liveTransY.value, cellHeight.value, snapMinutes);
-          runOnJS(commitLiftedDrop)(ghostXSV.value, minuteDelta);
+        if (lifted.value && ghostXSV && ghostYSV && commitLiftedDrop) {
+          runOnJS(commitLiftedDrop)(ghostXSV.value, ghostYSV.value);
           moveOffset.value = 0;
           moveOffsetX.value = 0;
           lifted.value = 0;
@@ -589,7 +585,6 @@ function AnimatedEventBox<T>({
     ghostXSV,
     ghostYSV,
     commitLiftedDrop,
-    liveTransY,
     dayWidth,
     dayIndex,
     dayCount,
@@ -937,6 +932,9 @@ type TimetablePageProps<T> = {
   onLongPressCell?: (date: Date) => void;
   onCreateEvent?: (start: Date, end: Date) => void;
   onEdgeAdvance?: (dir: number) => void;
+  /** Report this page's hour-grid top (below the all-day lane), while it is the
+   * active page, so a cross-week drop can map a ghost's Y to the right time. */
+  onGridTop?: (y: number) => void;
 };
 
 // A single date's grid: the pinch-zoomable, vertically-scrolling time column.
@@ -988,10 +986,17 @@ function TimetablePageInner<T>({
   onLongPressCell,
   onCreateEvent,
   onEdgeAdvance,
+  onGridTop,
 }: TimetablePageProps<T>) {
   const theme = useCalendarTheme();
   const slot = useSlots<TimeGridSlot>();
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  // The hour grid sits below the all-day lane; capture its top on layout and
+  // report it up while this page is active (the lane height differs per week).
+  const gridTopRef = useRef(0);
+  useEffect(() => {
+    if (isActive) onGridTop?.(gridTopRef.current);
+  }, [isActive, onGridTop]);
 
   // The visible page tracks the live cellHeight (animates every pinch frame);
   // off-screen pages track committedCellHeight (settles once per gesture).
@@ -1359,6 +1364,12 @@ function TimetablePageInner<T>({
           scrollEnabled={verticalScrollEnabled}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
+          onLayout={(event) => {
+            // The scroll view's offset within the page equals the all-day lane
+            // height above it: the hour grid's top. Report it while active.
+            gridTopRef.current = event.nativeEvent.layout.y;
+            if (isActive) onGridTop?.(gridTopRef.current);
+          }}
           contentContainerStyle={{ paddingTop: HOUR_LABEL_TOP_INSET }}
           contentOffset={{ x: 0, y: initialScrollY }}
         >
@@ -1812,6 +1823,10 @@ function TimeGridInner<T>({
   const ghostW = useSharedValue(0);
   const ghostH = useSharedValue(0);
   const ghostVisible = useSharedValue(0);
+  // Pager-local top of the active page's hour grid (the all-day lane above it
+  // varies in height per week), so a cross-week drop maps the ghost's screen
+  // position to the right time on the page it lands on.
+  const gridTop = useSharedValue(0);
   const [liftedEvent, setLiftedEvent] = useState<CalendarEvent<T> | null>(null);
   const liftedEventRef = useRef<CalendarEvent<T> | null>(null);
   // The drop commit needs the live page's columns and handler; keep them in a ref
@@ -1822,6 +1837,7 @@ function TimeGridInner<T>({
     headerDays: [] as Date[],
     containerWidth,
     hourColumnWidth,
+    minHour: clampedMinHour,
     snapMinutes: Math.max(1, dragStepMinutes),
     onDragEvent,
   });
@@ -1837,31 +1853,46 @@ function TimeGridInner<T>({
     setEdgePagingLock(false);
   }, [ghostVisible]);
   const commitLiftedDrop = useCallback(
-    (ghostLocalX: number, minuteDelta: number) => {
+    (ghostLocalX: number, ghostLocalY: number) => {
       const {
         headerDays: days,
         containerWidth: cw,
         hourColumnWidth: hcw,
+        minHour: min,
         snapMinutes: snap,
         onDragEvent: onDrag,
       } = dropRef.current;
       const ev = liftedEventRef.current;
+      const duration = ev ? ev.end.getTime() - ev.start.getTime() : 0;
       clearLift();
       if (!ev || !onDrag || days.length === 0) return;
-      // The event lands on the column under the ghost's left edge, shifted in time
-      // by the vertical drag (minuteDelta). resolveDraggedBounds moves both ends by
-      // the same amount, so the duration is preserved.
+      // Map the ghost's drawn position on the page it landed on back to a cell:
+      // its left edge picks the day column, its top edge picks the time. Reading
+      // the live grid geometry (the all-day lane pushes the grid down, the grid
+      // scrolls, pinch changes the row height) keeps the drop under the ghost.
       const dayWidth = (cw - hcw) / days.length;
       const col = Math.min(
         Math.max(Math.floor((ghostLocalX - hcw) / dayWidth), 0),
         days.length - 1,
       );
-      const dayDelta = differenceInCalendarDays(days[col], ev.start);
-      const total = dayDelta * MINUTES_PER_DAY + minuteDelta;
-      const next = resolveDraggedBounds(ev.start, ev.end, total, total, snap);
-      if (next) onDrag(ev, next.start, next.end);
+      const hoursFromMin =
+        (ghostLocalY - gridTop.value - HOUR_LABEL_TOP_INSET + scrollY.value) / cellHeight.value;
+      const rawMinutes = (min + hoursFromMin) * MINUTES_PER_HOUR;
+      const minutes = Math.round(rawMinutes / snap) * snap;
+      const start = new Date(days[col]);
+      start.setHours(0, 0, 0, 0);
+      start.setMinutes(minutes);
+      const end = new Date(start.getTime() + duration);
+      onDrag(ev, start, end);
     },
-    [clearLift],
+    [clearLift, gridTop, scrollY, cellHeight],
+  );
+  const handleGridTop = useCallback(
+    (y: number) => {
+      // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+      gridTop.value = y;
+    },
+    [gridTop],
   );
   const edgePaging = useMemo<EdgePaging>(
     () => ({
@@ -1970,6 +2001,7 @@ function TimeGridInner<T>({
     headerDays,
     containerWidth,
     hourColumnWidth,
+    minHour: clampedMinHour,
     snapMinutes: Math.max(1, dragStepMinutes),
     onDragEvent,
   };
@@ -2175,12 +2207,14 @@ function TimeGridInner<T>({
           onLongPressCell={onLongPressCell}
           onCreateEvent={onCreateEvent}
           onEdgeAdvance={goToPage}
+          onGridTop={handleGridTop}
         />
       </View>
     ),
     [
       containerWidth,
       pageHeight,
+      handleGridTop,
       mode,
       numberOfDays,
       events,
