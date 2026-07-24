@@ -169,11 +169,10 @@ type EdgePaging = {
   ghostW: SharedValue<number>;
   ghostH: SharedValue<number>;
   ghostVisible: SharedValue<number>;
-  // Show the ghost for `event`; drop it at pager-local `ghostLocalX` shifted in
-  // time by `minuteDelta`; or cancel without committing.
+  // Show the ghost for `event`, then drop it at pager-local `ghostLocalX` shifted
+  // in time by `minuteDelta` (clearing the ghost either way).
   beginLift: (event: CalendarEvent<unknown>) => void;
   commitLiftedDrop: (ghostLocalX: number, minuteDelta: number) => void;
-  cancelLift: () => void;
 };
 const EdgePagingContext = createContext<EdgePaging | null>(null);
 
@@ -306,7 +305,6 @@ function AnimatedEventBox<T>({
   const ghostXSV = edgePaging?.ghostX;
   const ghostYSV = edgePaging?.ghostY;
   const commitLiftedDrop = edgePaging?.commitLiftedDrop;
-  const cancelLift = edgePaging?.cancelLift;
   // Drag-to-move/resize. Native picks the event up on long-press (so a tap or
   // scroll isn't hijacked); web activates after a small drag threshold, so a
   // plain click still selects and a right-click still opens a context menu.
@@ -523,17 +521,10 @@ function AnimatedEventBox<T>({
         }
       })
       .onEnd((event) => {
-        // Cross-week drop: the event was lifted onto another page. Commit at the
-        // ghost's column on the now-visible page (its top-left X) shifted in time
-        // by the vertical drag; the parent resolves the day from its own columns.
-        if (lifted.value && ghostXSV && commitLiftedDrop) {
-          const minuteDelta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
-          runOnJS(commitLiftedDrop)(ghostXSV.value, minuteDelta);
-          moveOffset.value = 0;
-          moveOffsetX.value = 0;
-          lifted.value = 0;
-          return;
-        }
+        // A cross-week drag is committed in onFinalize (which fires whether the
+        // gesture ends cleanly or is cancelled as the page moves under it), so the
+        // drop lands even when onEnd doesn't fire on device. Nothing to do here.
+        if (lifted.value) return;
         const minuteDelta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
         // Map the horizontal drag to whole day columns, clamped so the event
         // can't leave the visible range.
@@ -559,9 +550,15 @@ function AnimatedEventBox<T>({
       })
       .onFinalize(() => {
         dragZ.value = 0;
-        // A cancelled drag (no onEnd) that had lifted must still clear the ghost.
-        if (lifted.value && cancelLift) {
-          runOnJS(cancelLift)();
+        // Commit the cross-week drop here: onFinalize fires on every gesture end,
+        // including the cancel RNGH reports when the source page moves under the
+        // touch, so committing from the last finger position (ghost column + the
+        // vertical drag) guarantees the drop lands instead of silently vanishing.
+        if (lifted.value && ghostXSV && commitLiftedDrop) {
+          const minuteDelta = snapDeltaMinutes(liveTransY.value, cellHeight.value, snapMinutes);
+          runOnJS(commitLiftedDrop)(ghostXSV.value, minuteDelta);
+          moveOffset.value = 0;
+          moveOffsetX.value = 0;
           lifted.value = 0;
         }
         runOnJS(releaseEdge)();
@@ -592,7 +589,6 @@ function AnimatedEventBox<T>({
     ghostXSV,
     ghostYSV,
     commitLiftedDrop,
-    cancelLift,
     liveTransY,
     dayWidth,
     dayIndex,
@@ -1880,7 +1876,6 @@ function TimeGridInner<T>({
       ghostVisible,
       beginLift,
       commitLiftedDrop,
-      cancelLift: clearLift,
     }),
     [
       pagerLeft,
@@ -1893,7 +1888,6 @@ function TimeGridInner<T>({
       ghostVisible,
       beginLift,
       commitLiftedDrop,
-      clearLift,
     ],
   );
   // Plain mirror of the last settled vertical offset. A page that mounts after a
