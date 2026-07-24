@@ -70,22 +70,20 @@ import * as Haptics from "expo-haptics";
 />;
 ```
 
-### Move an event to another week
+### Move an event to another week (web)
 
-Also pass `onChangeDate` alongside `onDragEvent` to let a drag cross the visible
-range into an off-screen period. Drag an event to the left or right edge of the
-day columns and hold briefly; the view pages to the previous/next period and
-keeps paging while you hold there.
+On the **web** renderer, pass `onChangeDate` alongside `onDragEvent` to let a drag
+cross the visible range into an off-screen period. Drag an event to the left or
+right edge of the day columns and hold briefly; the view pages to the
+previous/next period (and keeps paging while you hold there), and the drag stays
+live so you drop on any day in the newly revealed range. It's automatic whenever
+both handlers are set, and only fires on a deliberate dwell at the very edge, so
+it won't trip a normal in-view drag.
 
-- **Web:** the drag stays live across the page change; drop on any day in the
-  newly revealed range.
-- **React Native:** the event lifts into a floating ghost, the edge dwell pages
-  the view, and you tap the target day and time on the new page to place it (the
-  lift survives the page change because it sits above the pager).
-
-It's automatic whenever both `onChangeDate` and `onDragEvent` are set, and only
-fires on a deliberate dwell at the very edge, so it won't trip a normal in-view
-drag.
+On **React Native**, cross-week rescheduling by drag isn't a gesture; use the
+_move to next / previous week_ screen-reader actions below, or your own toolbar to
+page the view and drag within it. (In-view move, cross-day within the visible
+columns, and resize all work by gesture as usual.)
 
 ### Screen-reader rescheduling
 
