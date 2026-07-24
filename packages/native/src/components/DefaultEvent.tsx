@@ -132,7 +132,9 @@ export function DefaultEvent<T>({
       ]}
       onPress={onPress}
       onLongPress={onLongPress}
-      activeOpacity={0.7}
+      // Keep the box fully opaque while pressed: a move drag is a held long-press,
+      // and a dimmed event under the finger for the whole drag reads as broken.
+      activeOpacity={1}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: event.disabled ?? false }}
