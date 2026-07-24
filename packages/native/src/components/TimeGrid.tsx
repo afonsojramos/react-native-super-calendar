@@ -15,7 +15,17 @@ import {
   startOfDay,
   startOfWeek,
 } from "date-fns";
-import { memo, type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  memo,
+  type ReactElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   type AccessibilityActionEvent,
   type GestureResponderEvent,
@@ -132,6 +142,24 @@ const DRAG_EVENT_Z = 100;
 // How long to hold the dragged event past the visible columns before the view
 // pages one period toward that edge.
 const EDGE_DWELL_MS = 500;
+// How close (px) the dragging finger must get to the pager's left/right edge to
+// count as "past the columns". Detecting by finger position, not by how many
+// columns the drag has crossed, so an event in any column can reach either edge
+// (a column-delta test can't reach the far edge from a near-side column).
+const EDGE_ZONE_PX = 36;
+
+/**
+ * Lets a per-event drag worklet, deep inside the pager, both locate the pager's
+ * horizontal edges and freeze its swipe scroll while an edge-page is committed.
+ * Freezing matters on native: a programmatic page scroll is otherwise deferred
+ * until the touch ends, so the view would only advance once the finger lifts.
+ */
+type EdgePaging = {
+  pagerLeft: SharedValue<number>;
+  pagerWidth: SharedValue<number>;
+  lockScroll: (locked: boolean) => void;
+};
+const EdgePagingContext = createContext<EdgePaging | null>(null);
 
 /**
  * Called when an event is dragged (moved or resized) to new start/end times.
@@ -210,6 +238,13 @@ function AnimatedEventBox<T>({
   const RenderEventComponent = renderEvent;
   const theme = useCalendarTheme();
   const slot = useSlots<TimeGridSlot>();
+  // Pager geometry + scroll lock, so a cross-week edge drag can find the edges
+  // and page the view live under the finger (see EdgePaging). The two edge
+  // shared values are pulled out so the move worklet closes over them directly
+  // rather than over the whole context object (which also holds a JS callback).
+  const edgePaging = useContext(EdgePagingContext);
+  const pagerLeftSV = edgePaging?.pagerLeft;
+  const pagerWidthSV = edgePaging?.pagerWidth;
   // Drag-to-move/resize. Native picks the event up on long-press (so a tap or
   // scroll isn't hijacked); web activates after a small drag threshold, so a
   // plain click still selects and a right-click still opens a context menu.
@@ -330,6 +365,12 @@ function AnimatedEventBox<T>({
       dwellTimer.current = null;
     }
   }, []);
+  // Cancel a pending dwell and hand the pager's swipe scroll back. Runs on every
+  // gesture end so a lock taken by an edge-page is always released.
+  const releaseEdge = useCallback(() => {
+    disarmEdge();
+    edgePaging?.lockScroll(false);
+  }, [disarmEdge, edgePaging]);
   const armEdge = useCallback(
     (dir: number) => {
       disarmEdge();
@@ -337,6 +378,10 @@ function AnimatedEventBox<T>({
         dwellTimer.current = null;
         if (edgePaged.value) return;
         edgePaged.value = 1;
+        // Freeze the pager's own swipe before paging: on native a programmatic
+        // scroll is deferred while the touch is tracked, so without this the view
+        // wouldn't advance until the finger lifts.
+        edgePaging?.lockScroll(true);
         const minuteDelta = snapDeltaMinutes(liveTransY.value, cellHeight.value, snapMinutes);
         const weekDelta = dir * daysPerPage * MINUTES_PER_DAY;
         commitDrag(minuteDelta + weekDelta, minuteDelta + weekDelta);
@@ -346,6 +391,7 @@ function AnimatedEventBox<T>({
     [
       disarmEdge,
       edgePaged,
+      edgePaging,
       snapMinutes,
       cellHeight,
       liveTransY,
@@ -368,12 +414,13 @@ function AnimatedEventBox<T>({
         moveOffset.value = event.translationY;
         moveOffsetX.value = event.translationX;
         liveTransY.value = event.translationY;
-        // Dragging past the first/last visible column arms an edge dwell that
-        // pages the view. `onEdgeAdvance` is only wired when paging is available.
-        if (onEdgeAdvance) {
-          const rawDayDelta = dayWidth > 0 ? Math.round(event.translationX / dayWidth) : 0;
-          const target = dayIndex + rawDayDelta;
-          const dir = target > dayCount - 1 ? 1 : target < 0 ? -1 : 0;
+        // Dragging the finger to the pager's left/right edge arms an edge dwell
+        // that pages the view. Measured by absolute finger position (not by how
+        // many columns the drag crossed), so an event in any column can reach
+        // either edge. `onEdgeAdvance` is only wired when paging is available.
+        if (onEdgeAdvance && pagerLeftSV && pagerWidthSV) {
+          const fx = event.absoluteX - pagerLeftSV.value;
+          const dir = fx > pagerWidthSV.value - EDGE_ZONE_PX ? 1 : fx < EDGE_ZONE_PX ? -1 : 0;
           if (dir !== edgeDir.value) {
             edgeDir.value = dir;
             if (dir === 0) runOnJS(disarmEdge)();
@@ -410,7 +457,7 @@ function AnimatedEventBox<T>({
       })
       .onFinalize(() => {
         dragZ.value = 0;
-        runOnJS(disarmEdge)();
+        runOnJS(releaseEdge)();
       });
     // Native: long-press to pick up. Web: activate past a small drag in either
     // axis so clicks/right-clicks pass through but horizontal drags still move.
@@ -428,6 +475,8 @@ function AnimatedEventBox<T>({
     dragZ,
     edgeDir,
     edgePaged,
+    pagerLeftSV,
+    pagerWidthSV,
     liveTransY,
     dayWidth,
     dayIndex,
@@ -438,6 +487,7 @@ function AnimatedEventBox<T>({
     onEdgeAdvance,
     armEdge,
     disarmEdge,
+    releaseEdge,
   ]);
 
   const resizeGesture = useMemo(
@@ -1603,6 +1653,9 @@ function TimeGridInner<T>({
 
   const { width, height } = useWindowDimensions();
   const listRef = useRef<LegendListRef>(null);
+  // The pager's own view; measured in the window so an event drag can locate the
+  // horizontal edges (its screen-space left and width) for cross-week paging.
+  const pagerRef = useRef<View>(null);
   // The grid's outer view; on web its ref resolves to the DOM node we attach the
   // Ctrl/Cmd + scroll zoom listener to.
   const containerRef = useRef<View>(null);
@@ -1633,6 +1686,16 @@ function TimeGridInner<T>({
   const seedDefaultY =
     Math.max(0, scrollOffsetMinutes / MINUTES_PER_HOUR - clampedMinHour) * hourHeight;
   const scrollY = useSharedValue(seedDefaultY);
+  // Pager edges in window space (refined on layout) and a swipe-scroll freeze,
+  // shared with the event drag worklets through EdgePagingContext so a cross-week
+  // edge drag can detect the edges and page the view live under a held finger.
+  const pagerLeft = useSharedValue(0);
+  const pagerWidth = useSharedValue(width);
+  const [edgePagingLock, setEdgePagingLock] = useState(false);
+  const edgePaging = useMemo<EdgePaging>(
+    () => ({ pagerLeft, pagerWidth, lockScroll: setEdgePagingLock }),
+    [pagerLeft, pagerWidth],
+  );
   // Plain mirror of the last settled vertical offset. A page that mounts after a
   // scroll seeds its contentOffset here instead of the default, so it appears at the
   // saved time straight away rather than rendering at the default and snapping (the
@@ -1968,67 +2031,80 @@ function TimeGridInner<T>({
 
   return (
     <SlotStylesProvider classNames={classNames} styles={styleOverrides}>
-      <View ref={containerRef} style={styles.container}>
-        {renderHeader ? (
-          renderHeader(headerDays)
-        ) : (
-          <DefaultHeader
-            days={headerDays}
-            mode={mode}
-            width={containerWidth}
-            hourColumnWidth={hourColumnWidth}
-            showWeekNumber={showWeekNumber}
-            weekNumberPrefix={weekNumberPrefix}
-            weekdayFormat={weekdayFormat}
-            locale={locale}
-            activeDate={activeDate}
-            onPressDateHeader={onPressDateHeader}
-          />
-        )}
+      <EdgePagingContext.Provider value={edgePaging}>
+        <View ref={containerRef} style={styles.container}>
+          {renderHeader ? (
+            renderHeader(headerDays)
+          ) : (
+            <DefaultHeader
+              days={headerDays}
+              mode={mode}
+              width={containerWidth}
+              hourColumnWidth={hourColumnWidth}
+              showWeekNumber={showWeekNumber}
+              weekNumberPrefix={weekNumberPrefix}
+              weekdayFormat={weekdayFormat}
+              locale={locale}
+              activeDate={activeDate}
+              onPressDateHeader={onPressDateHeader}
+            />
+          )}
 
-        {headerComponent}
+          {headerComponent}
 
-        <View
-          style={styles.pager}
-          onLayout={(event) => {
-            setPageHeight(event.nativeEvent.layout.height);
-            setContainerWidth(event.nativeEvent.layout.width);
-            setMeasured(true);
-          }}
-        >
-          <LegendList
-            // Remount only on the seed→measured transition (see `measured`), not on
-            // every height change, so a day↔week header-height difference resizes the
-            // items in place instead of remounting and blanking the page.
-            key={measured ? "grid" : "grid-seed"}
-            ref={listRef}
-            style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
-            data={pageDates}
-            extraData={listExtraData}
-            horizontal
-            recycleItems={false}
-            keyExtractor={keyExtractorList}
-            getFixedItemSize={getFixedItemSize}
-            // On web LegendList ignores these RN scroll props (it leaks them to the
-            // DOM as unknown attributes), so omit them there and disable horizontal
-            // scroll via `webNoScroll`; paging is driven by the arrow keys instead.
-            // Native: paging makes each swipe hard-stop at the adjacent page, while
-            // `freeSwipe` lets momentum carry across pages and snap to a boundary.
-            {...(isWeb
-              ? null
-              : {
-                  scrollEnabled: swipeEnabled,
-                  pagingEnabled: !freeSwipe,
-                  snapToIndices: freeSwipe ? snapToIndices : undefined,
-                })}
-            initialScrollIndex={activeIndex}
-            showsHorizontalScrollIndicator={false}
-            viewabilityConfig={PAGE_VIEWABILITY}
-            onViewableItemsChanged={handleViewableItemsChanged}
-            renderItem={renderItem}
-          />
+          <View
+            ref={pagerRef}
+            style={styles.pager}
+            onLayout={(event) => {
+              setPageHeight(event.nativeEvent.layout.height);
+              setContainerWidth(event.nativeEvent.layout.width);
+              setMeasured(true);
+              // Record the pager's window-space left/width for the drag worklets'
+              // edge detection (layout gives parent-relative coords, not window).
+              pagerRef.current?.measureInWindow((x, _y, w) => {
+                // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+                pagerLeft.value = x;
+                // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+                pagerWidth.value = w;
+              });
+            }}
+          >
+            <LegendList
+              // Remount only on the seed→measured transition (see `measured`), not on
+              // every height change, so a day↔week header-height difference resizes the
+              // items in place instead of remounting and blanking the page.
+              key={measured ? "grid" : "grid-seed"}
+              ref={listRef}
+              style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
+              data={pageDates}
+              extraData={listExtraData}
+              horizontal
+              recycleItems={false}
+              keyExtractor={keyExtractorList}
+              getFixedItemSize={getFixedItemSize}
+              // On web LegendList ignores these RN scroll props (it leaks them to the
+              // DOM as unknown attributes), so omit them there and disable horizontal
+              // scroll via `webNoScroll`; paging is driven by the arrow keys instead.
+              // Native: paging makes each swipe hard-stop at the adjacent page, while
+              // `freeSwipe` lets momentum carry across pages and snap to a boundary.
+              {...(isWeb
+                ? null
+                : {
+                    // Frozen mid-edge-page so the programmatic advance lands under
+                    // the held finger instead of waiting for the touch to end.
+                    scrollEnabled: swipeEnabled && !edgePagingLock,
+                    pagingEnabled: !freeSwipe,
+                    snapToIndices: freeSwipe ? snapToIndices : undefined,
+                  })}
+              initialScrollIndex={activeIndex}
+              showsHorizontalScrollIndicator={false}
+              viewabilityConfig={PAGE_VIEWABILITY}
+              onViewableItemsChanged={handleViewableItemsChanged}
+              renderItem={renderItem}
+            />
+          </View>
         </View>
-      </View>
+      </EdgePagingContext.Provider>
     </SlotStylesProvider>
   );
 }
