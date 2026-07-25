@@ -1840,6 +1840,7 @@ function TimeGridInner<T>({
     minHour: clampedMinHour,
     snapMinutes: Math.max(1, dragStepMinutes),
     onDragEvent,
+    onChangeDate,
   });
   const beginLift = useCallback((event: CalendarEvent<unknown>) => {
     liftedEventRef.current = event as CalendarEvent<T>;
@@ -1861,6 +1862,7 @@ function TimeGridInner<T>({
         minHour: min,
         snapMinutes: snap,
         onDragEvent: onDrag,
+        onChangeDate: onDate,
       } = dropRef.current;
       const ev = liftedEventRef.current;
       const duration = ev ? ev.end.getTime() - ev.start.getTime() : 0;
@@ -1883,7 +1885,10 @@ function TimeGridInner<T>({
       start.setHours(0, 0, 0, 0);
       start.setMinutes(minutes);
       const end = new Date(start.getTime() + duration);
-      onDrag(ev, start, end);
+      // A rejected drop (handler returned false) leaves the event on its original
+      // week, which the drag has paged away from. Page back to it so the reject
+      // reads as a visible snap-back instead of the event seeming to vanish.
+      if (onDrag(ev, start, end) === false) onDate(ev.start);
     },
     [clearLift, gridTop, scrollY, cellHeight],
   );
@@ -2004,6 +2009,7 @@ function TimeGridInner<T>({
     minHour: clampedMinHour,
     snapMinutes: Math.max(1, dragStepMinutes),
     onDragEvent,
+    onChangeDate,
   };
 
   const handleViewableItemsChanged = useCallback(
