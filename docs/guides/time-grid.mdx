@@ -49,7 +49,16 @@ timed columns and stack in a lane above the grid. Turn it off with
 
 The red current-time line follows the wall clock (`showNowIndicator`, on by
 default). `businessHours` shades the closed hours per day; return `null` for a
-fully closed day (see [Theming](/guides/theming) for the shade colour).
+fully closed day (see [Theming](/guides/theming) for the shade colour). Return an
+array of windows to leave a closed gap between them, such as a lunch break:
+
+```tsx
+// Open 9-12 and 13-17: the 12-13 lunch hour shades closed too.
+businessHours={() => [
+  { start: 9, end: 12 },
+  { start: 13, end: 17 },
+]}
+```
 
 To put your own content in the closed region (a label, an icon, a striped
 pattern), add `renderBusinessHours`. The grid keeps positioning each band and
@@ -69,6 +78,10 @@ visuals, not buttons or announced text:
   onPressEvent={onPress}
 />
 ```
+
+Saturday and Sunday columns are tinted with the weekend background by default. Pass
+`highlightWeekends={false}` to treat them like any other day (or recolour the tint
+via the `weekendBackground` [theme](/guides/theming) token).
 
 ## Interaction
 
