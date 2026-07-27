@@ -1,5 +1,48 @@
 # Changelog
 
+## [2.7.0](https://github.com/afonsojramos/super-calendar/compare/v2.6.0...v2.7.0) (2026-07-27)
+
+
+### Features
+
+* add a per-event draggable flag to lock a single event ([6cae6af](https://github.com/afonsojramos/super-calendar/commit/6cae6af535a55d1ebb7c96731d5e0ac6c9ef1c1f))
+* add highlightWeekends to toggle weekend column shading ([f46210f](https://github.com/afonsojramos/super-calendar/commit/f46210f530dc26522557ed280f29d9f57a097faa))
+* add renderBusinessHours to the time grid and resource timeline ([bf1afb7](https://github.com/afonsojramos/super-calendar/commit/bf1afb774e325800872fa49ddea71f0367681f48))
+* add resourcesPerPage and resourcePage lane paging to the resource timeline ([8dc9149](https://github.com/afonsojramos/super-calendar/commit/8dc914908a375ed740f24fc2b296d6909037309a))
+* **core:** add pageStepDays for advancing the time grid by a whole page ([0edc2c0](https://github.com/afonsojramos/super-calendar/commit/0edc2c01a736a67c806ad0ea6511c5c94b262344))
+* **core:** allow businessHours to return multiple open windows per day ([31a6dca](https://github.com/afonsojramos/super-calendar/commit/31a6dca47682571505d68494e127d6fd9e275295))
+* **core:** load events from JSON and iCal feeds with useEventSource ([056d941](https://github.com/afonsojramos/super-calendar/commit/056d94165c34dfb3218df9cefab466a2d9fc12cf))
+* **dom:** auto-advance the time grid when dragging an event to the edge ([fc57c45](https://github.com/afonsojramos/super-calendar/commit/fc57c45bc45c23107357c54af7c3c269d749cb73))
+* drag events across lanes on the resource timeline ([73fec41](https://github.com/afonsojramos/super-calendar/commit/73fec4173086d9bcc6d95e3f525991b13e3e14fe))
+* hide chosen weekdays from the grids with hiddenDays ([091abb8](https://github.com/afonsojramos/super-calendar/commit/091abb880be3ba2d34aab5690f99c24cc9692509))
+* make the now indicator timezone-aware and add it to the ResourceTimeline ([d7c2bef](https://github.com/afonsojramos/super-calendar/commit/d7c2beff085e059d930b8f5658b32f2515e6605b)), closes [#32](https://github.com/afonsojramos/super-calendar/issues/32)
+* **native:** add move-to-next/previous-page screen-reader actions to time-grid events ([db11d7c](https://github.com/afonsojramos/super-calendar/commit/db11d7c2ee2d737a72bcf7901831eca920029c06))
+* **native:** carry a dragged event across the week in one gesture ([30166c6](https://github.com/afonsojramos/super-calendar/commit/30166c6b2fd2b341677128d4917ccd09953947f5))
+* **native:** float the dragged event above others and page the week on edge-hold ([e2ed3cd](https://github.com/afonsojramos/super-calendar/commit/e2ed3cde070c65e13e1cf45acf87bfd21a9f491f))
+* **native:** lift dragged events into a floating overlay for cross-page drops ([a62d597](https://github.com/afonsojramos/super-calendar/commit/a62d597e2fa048c09a9bb14f785cc0a8c0ade0ff))
+* open a built-in popover from the month overflow label ([a49846c](https://github.com/afonsojramos/super-calendar/commit/a49846c6209600aad9758748770af7f4c5ea1675))
+* paint background events as shaded ranges across the grids ([79b44d2](https://github.com/afonsojramos/super-calendar/commit/79b44d209f4fdaa69abaf286eeb4a00a4306786e))
+
+
+### Bug Fixes
+
+* close the more popover on repeat presses and harden hiddenDays edge cases ([4114340](https://github.com/afonsojramos/super-calendar/commit/4114340fc53976287f85c992a85b624d4583787b))
+* **core:** abort superseded useEventSource fetches and cover interval refetching ([fa8e781](https://github.com/afonsojramos/super-calendar/commit/fa8e7815c5bdff6e5573f17f9f22b32625c855db))
+* **core:** match timed EXDATEs by exact instant instead of collapsing to the day ([94afffd](https://github.com/afonsojramos/super-calendar/commit/94afffd0bd11247d7a71d7c1ed310ecbe7534bb7))
+* **dom:** forward hiddenDays from Calendar to the time grid ([0fc2422](https://github.com/afonsojramos/super-calendar/commit/0fc2422be8c85b6fed3977abeff22badc301baae))
+* **dom:** gate the lifted style while paged and harden the drag listener lifecycle ([f5cf8b5](https://github.com/afonsojramos/super-calendar/commit/f5cf8b5c96aaf1308bb968021048f34191cc785b))
+* **dom:** keep pointer-dismissal focus and drop the popover aria-modal claim ([e01a4d5](https://github.com/afonsojramos/super-calendar/commit/e01a4d55741e3ece97974e4e5dd5c3d096f54780))
+* **dom:** manage keyboard focus in the built-in month overflow popover ([8929f1c](https://github.com/afonsojramos/super-calendar/commit/8929f1cd46a386eabdd0f02a75d96e6502388ef6))
+* land cross-day drags on visible columns when days are hidden ([5a20e1e](https://github.com/afonsojramos/super-calendar/commit/5a20e1e62dbc3eb6aa77deb1e934f3bc8f885892))
+* **native:** commit a cross-week drop on gesture finalize so it never vanishes ([24a76fc](https://github.com/afonsojramos/super-calendar/commit/24a76fc4518b3e20734df66eb81bf53083de925f))
+* **native:** detect the drag edge by finger position and page the week live under a held finger ([d2fb5af](https://github.com/afonsojramos/super-calendar/commit/d2fb5af0f078cf38a741d61c1e41a36a6efab7a7))
+* **native:** drop a cross-week event where the ghost sits on the target grid ([4edbca1](https://github.com/afonsojramos/super-calendar/commit/4edbca1776b7cdfe34509ac65c178b1dabddd2a1))
+* **native:** hide business-hours bands from assistive tech and document the decorative contract ([06e0299](https://github.com/afonsojramos/super-calendar/commit/06e02994a7986843d3b20b32d3e826cc2e6186f3))
+* **native:** keep a dragged event fully opaque while it is held ([845b681](https://github.com/afonsojramos/super-calendar/commit/845b681fed357dce6852814cbc65160559bba3cd))
+* **native:** preserve the grab offset on drop, cancel a stray hold, and page once per edge ([8307b2d](https://github.com/afonsojramos/super-calendar/commit/8307b2de5bc001099848e30219ffc0ae5c9f957d))
+* **native:** snap the view back when a cross-week drop is rejected ([19c4475](https://github.com/afonsojramos/super-calendar/commit/19c447557bb5e3b407d39b6f9da90825d2bd741e))
+* settle the cross-lane drag preview and harden the drop hit-test ([b4caf22](https://github.com/afonsojramos/super-calendar/commit/b4caf22e65bd7a243820842adecc27a50455b46e))
+
 ## [2.6.0](https://github.com/afonsojramos/super-calendar/compare/v2.5.0...v2.6.0) (2026-07-20)
 
 
