@@ -436,7 +436,6 @@ export default function App() {
                   }
                   onPressEvent={(event) => console.log("press event:", event.title)}
                   onDragEvent={(event, start, end, resource) => {
-                    if (event.kind === "exam") return false; // exams are locked
                     setEvents((prev) =>
                       prev.map((e) =>
                         e.id === event.id ? { ...e, start, end, resourceId: resource.id } : e,
@@ -515,9 +514,8 @@ export default function App() {
                     renderEvent={EventContextMenu}
                     onChangeDate={setDate}
                     onDragEvent={(event, start, end) => {
-                      // Demo: exams are locked — returning false rejects the drop and
-                      // snaps the event back to where it started.
-                      if ((event as CalendarEvent<EventMeta>).kind === "exam") return false;
+                      // The exam is pinned via `draggable: false` on the event, so it
+                      // never reaches here; every other event moves.
                       setEvents((prev) =>
                         prev.map((e) => (e.id === event.id ? { ...e, start, end } : e)),
                       );

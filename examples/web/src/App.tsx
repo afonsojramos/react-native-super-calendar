@@ -444,7 +444,6 @@ export function App() {
               }
               onPressEvent={(event) => console.log("press event:", event.title)}
               onDragEvent={(event, start, end, resource) => {
-                if (event.kind === "exam") return false; // exams are locked
                 setEvents((prev) =>
                   prev.map((e) =>
                     e.id === event.id ? { ...e, start, end, resourceId: resource.id } : e,
@@ -507,8 +506,8 @@ export function App() {
                 return { start: 9, end: 17 };
               }}
               onDragEvent={(event, start, end) => {
-                // Exams are locked: returning false rejects the drop (snaps back).
-                if (event.kind === "exam") return false;
+                // The exam is pinned via `draggable: false` on the event, so it never
+                // reaches here; every other event moves.
                 setEvents((prev) =>
                   prev.map((e) => (e.id === event.id ? { ...e, start, end } : e)),
                 );
