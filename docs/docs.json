@@ -78,11 +78,13 @@
         "href": "https://www.npmjs.com/package/@super-calendar/native"
       },
       {
-        "label": "npmx",
+        "label": "",
+        "icon": "/logo/npmx.svg",
         "href": "https://npmx.dev/package/@super-calendar/native"
       },
       {
-        "label": "JSR",
+        "label": "",
+        "icon": "/logo/jsr.svg",
         "href": "https://jsr.io/@super-calendar/native"
       }
     ],
