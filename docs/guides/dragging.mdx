@@ -40,15 +40,43 @@ drag-to-resize fully working, so events stay editable without the visual marker.
 />
 ```
 
-### Reject a drop
+### Lock specific events
 
-Return `false` from `onDragEvent` to refuse the new placement — the event snaps
-back to where it started. Use it to forbid overlaps, out-of-bounds slots, or
-locked events.
+`onDragEvent` makes **every** event draggable, which is the right default: most
+calendars let you reschedule anything. When a few events must never move (a
+confirmed booking, an event someone else owns, a holiday), set `draggable: false`
+on those events. They keep their normal appearance and still respond to taps, they
+just can't be picked up or resized. Nothing else needs to change.
 
 ```tsx
+const events = [
+  { id: "1", title: "Standup", start, end },
+  { id: "2", title: "Driving test", start, end, draggable: false }, // can't be moved
+];
+```
+
+Reach for this when an event can _never_ move, so you don't offer a drag that only
+snaps back. To refuse a move for some targets but not others (see below), keep the
+event draggable and reject the specific drop instead. (For an event that shouldn't
+respond to taps either and should read as unavailable, use `disabled: true`, which
+also dims it.)
+
+### Reject a drop
+
+Return `false` from `onDragEvent` to refuse a particular placement — the event
+snaps back to where it started (on the time grid a cross-week drop snaps the view
+back too, so the rejection is visible). Use it for rules that depend on where the
+event lands: overlaps, out-of-bounds slots, or business-hours limits. The library
+is expo-free, so fire your own feedback (a haptic, a toast) right where you reject.
+
+```tsx
+import * as Haptics from "expo-haptics";
+
 onDragEvent={(event, start, end) => {
-  if (event.locked || overlapsAnother(event, start, end)) return false;
+  if (overlapsAnother(event, start, end)) {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    return false;
+  }
   setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, start, end } : e)));
 }}
 ```
