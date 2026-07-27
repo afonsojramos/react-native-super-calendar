@@ -19,6 +19,7 @@ import {
   isSameCalendarDay,
   useNow,
   type BusinessHoursBand,
+  type BusinessHoursValue,
   closedHourBands,
   eventTimeLabel,
   formatHour,
@@ -142,7 +143,7 @@ export interface ResourceTimelineProps<T = unknown> {
    * `businessHours` plus the lane's resource, so per-resource opening hours work
    * (return `null` for a fully closed lane). A date-only function is accepted.
    */
-  businessHours?: (date: Date, resource: Resource) => { start: number; end: number } | null;
+  businessHours?: (date: Date, resource: Resource) => BusinessHoursValue;
   /**
    * Render a closed-hours band's content yourself (a label, icon, pattern). The
    * board keeps positioning the band; when set, the themed tint is dropped and

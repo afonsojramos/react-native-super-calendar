@@ -185,13 +185,31 @@ export function closedHourBands(
   const open = businessHours?.(day);
   if (open === undefined) return [];
   if (open === null) return [{ start: minHour, end: maxHour }];
-  const start = Math.max(minHour, Math.min(maxHour, open.start));
-  const end = Math.max(minHour, Math.min(maxHour, open.end));
-  // Inverted or empty open hours mean nothing is open: shade the whole window.
-  if (start >= end) return [{ start: minHour, end: maxHour }];
+  // Clamp every open window to the visible range and drop empty/inverted ones.
+  const windows = (Array.isArray(open) ? open : [open])
+    .map((w) => ({
+      start: Math.max(minHour, Math.min(maxHour, w.start)),
+      end: Math.max(minHour, Math.min(maxHour, w.end)),
+    }))
+    .filter((w) => w.end > w.start)
+    .sort((a, b) => a.start - b.start);
+  // Nothing open: shade the whole window.
+  if (windows.length === 0) return [{ start: minHour, end: maxHour }];
+  // Merge overlapping/touching windows so the closed bands are the gaps between
+  // (and around) them: before the first, between windows (e.g. lunch), after the last.
+  const merged: { start: number; end: number }[] = [];
+  for (const w of windows) {
+    const last = merged[merged.length - 1];
+    if (last && w.start <= last.end) last.end = Math.max(last.end, w.end);
+    else merged.push({ ...w });
+  }
   const bands: { start: number; end: number }[] = [];
-  if (start > minHour) bands.push({ start: minHour, end: start });
-  if (end < maxHour) bands.push({ start: end, end: maxHour });
+  let cursor = minHour;
+  for (const w of merged) {
+    if (w.start > cursor) bands.push({ start: cursor, end: w.start });
+    cursor = w.end;
+  }
+  if (cursor < maxHour) bands.push({ start: cursor, end: maxHour });
   return bands;
 }
 

@@ -119,12 +119,22 @@ export type EventKeyExtractor<T = unknown> = (event: CalendarEvent<T>, index: nu
 export type WeekStartsOn = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 /**
- * A day's open hours for `businessHours` shading on the time grid: `{ start, end }`
- * in hours (fractions allowed, e.g. 9.5), or `null` when the day is closed (fully
- * shaded). `undefined` from the callback means "no business-hours shading". Shared
- * by both renderers; pair with `closedHourBands` to get the spans to shade.
+ * A day's open hours for `businessHours` shading, as hours (fractions allowed,
+ * e.g. `9.5`): a single window `{ start, end }`, or an array of windows to leave
+ * a closed gap between them (a lunch break: `[{ start: 9, end: 12 }, { start: 13,
+ * end: 17 }]`). Everything outside the window(s) is shaded closed.
  */
-export type BusinessHours = (date: Date) => { start: number; end: number } | null;
+export type BusinessHoursValue =
+  | { start: number; end: number }
+  | { start: number; end: number }[]
+  | null;
+/**
+ * The `businessHours` callback: return the open hours for `date` (see
+ * {@link BusinessHoursValue}), `null` when the day is fully closed (all shaded),
+ * or `undefined` for no business-hours shading. Shared by both renderers; pair
+ * with `closedHourBands` to get the spans to shade.
+ */
+export type BusinessHours = (date: Date) => BusinessHoursValue;
 
 /**
  * One closed-hours band handed to a `renderBusinessHours` override: the day it

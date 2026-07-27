@@ -44,6 +44,47 @@ describe("closedHourBands", () => {
       { start: 0, end: 24 },
     ]);
   });
+
+  it("shades the gap between multiple open windows (a lunch break)", () => {
+    expect(
+      closedHourBands(
+        day,
+        () => [
+          { start: 9, end: 12 },
+          { start: 13, end: 17 },
+        ],
+        0,
+        24,
+      ),
+    ).toEqual([
+      { start: 0, end: 9 },
+      { start: 12, end: 13 },
+      { start: 17, end: 24 },
+    ]);
+  });
+
+  it("merges overlapping or touching windows and drops empty ones", () => {
+    // 9-12 and 11-15 overlap into 9-15; the 16-16 window is empty and ignored.
+    expect(
+      closedHourBands(
+        day,
+        () => [
+          { start: 11, end: 15 },
+          { start: 9, end: 12 },
+          { start: 16, end: 16 },
+        ],
+        0,
+        24,
+      ),
+    ).toEqual([
+      { start: 0, end: 9 },
+      { start: 15, end: 24 },
+    ]);
+  });
+
+  it("shades the whole window when every open window is empty", () => {
+    expect(closedHourBands(day, () => [], 0, 24)).toEqual([{ start: 0, end: 24 }]);
+  });
 });
 
 describe("groupEventsByDay", () => {
