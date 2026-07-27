@@ -710,7 +710,8 @@ export function ResourceTimeline<T = unknown>({
                       height,
                       onPress,
                     };
-                    const draggable = !!onDragEvent;
+                    // `draggable: false` locks a single bar (keeps clicks, blocks drag).
+                    const draggable = !!onDragEvent && pe.event.draggable !== false;
                     return (
                       <button
                         key={idx}

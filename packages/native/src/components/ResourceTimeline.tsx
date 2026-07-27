@@ -274,7 +274,10 @@ function ResourceBar<T>({
   const latest = useRef({ event: pe.event, onDragEvent, resources, laneIndex });
   latest.current = { event: pe.event, onDragEvent, resources, laneIndex };
   const laneCount = resources.length;
-  const draggable = !(pe.event as { disabled?: boolean }).disabled;
+  // `draggable: false` locks a single bar (keeps taps, blocks move/resize).
+  const draggable =
+    !(pe.event as { disabled?: boolean }).disabled &&
+    (pe.event as { draggable?: boolean }).draggable !== false;
 
   // Clear the live preview when the drag on this lane settles, or when a
   // committed change re-renders the bar. Skip while a drag is active so this

@@ -216,6 +216,23 @@ describe("TimeGrid cross-page accessibility actions", () => {
     const [, prevStart] = onDragEvent.mock.calls[1] as [CalendarEvent<WithId>, Date, Date];
     expect(prevStart.getTime()).toBe(new Date(2025, 11, 30, 9, 0, 0).getTime());
   });
+
+  it("locks an event with draggable:false: no drag actions even when onDragEvent is set", () => {
+    const { getByLabelText } = render(
+      <Calendar
+        mode="week"
+        date={date}
+        events={[{ ...event, draggable: false }]}
+        onChangeDate={noop}
+        onPressEvent={noop}
+        onDragEvent={jest.fn()}
+      />,
+    );
+    // Still rendered and reachable (taps unaffected), but exposes no move/resize
+    // screen-reader actions, mirroring the blocked gesture.
+    const bar = getByLabelText(/Standup, 09:00 to 10:00/);
+    expect(bar.props.accessibilityActions ?? []).toHaveLength(0);
+  });
 });
 
 describe("TimeGrid column header", () => {

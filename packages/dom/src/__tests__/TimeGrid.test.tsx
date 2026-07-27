@@ -65,6 +65,32 @@ describe("dom TimeGrid", () => {
     expect(end.getHours()).toBe(14);
   });
 
+  it("locks an event with draggable:false: drag is a no-op, taps still fire", () => {
+    const onDragEvent = jest.fn();
+    const onPressEvent = jest.fn();
+    const locked: CalendarEvent[] = [{ ...events[0], draggable: false }];
+    const { getByText } = render(
+      <TimeGrid
+        date={day}
+        mode="day"
+        events={locked}
+        hourHeight={48}
+        onDragEvent={onDragEvent}
+        onPressEvent={onPressEvent}
+      />,
+    );
+    const box = wrapperOf(getByText("Focus"));
+    // A locked event stays a plain pointer target, not a grab handle.
+    expect(box.style.cursor).toBe("pointer");
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 204, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 204, pointerId: 1 });
+    expect(onDragEvent).not.toHaveBeenCalled();
+    // Taps are unaffected: clicking still selects the event.
+    fireEvent.click(box);
+    expect(onPressEvent).toHaveBeenCalledTimes(1);
+  });
+
   it("drag-moves an event to another day column, keeping its time and duration", () => {
     const onDragEvent = jest.fn();
     const { getByText } = render(

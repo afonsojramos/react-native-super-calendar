@@ -308,7 +308,9 @@ function AnimatedEventBox<T>({
   // Drag-to-move/resize. Native picks the event up on long-press (so a tap or
   // scroll isn't hijacked); web activates after a small drag threshold, so a
   // plain click still selects and a right-click still opens a context menu.
-  const draggable = onDragEvent != null && !positioned.event.disabled;
+  // `draggable: false` locks a single event (keeps taps, blocks move/resize).
+  const draggable =
+    onDragEvent != null && !positioned.event.disabled && positioned.event.draggable !== false;
   // Only the segment that owns the real end may be resized.
   const resizable = draggable && !positioned.continuesAfter;
 

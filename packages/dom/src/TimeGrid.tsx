@@ -1307,7 +1307,9 @@ export function TimeGrid<T = unknown>({
                     ampm,
                     onPress,
                   };
-                  const draggable = !!onDragEvent;
+                  // `draggable: false` locks a single event: it keeps its normal
+                  // look and still responds to clicks, it just can't be dragged.
+                  const draggable = !!onDragEvent && pe.event.draggable !== false;
                   return (
                     <div
                       key={idx}

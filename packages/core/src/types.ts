@@ -26,6 +26,16 @@ export interface ICalendarEvent {
   /** Ignore taps/long-presses on this event (the built-in renderer also dims it). */
   disabled?: boolean;
   /**
+   * Whether this event can be dragged to move or resize. Defaults to `true`, so
+   * enabling drag with `onDragEvent` makes every event movable. Set `false` to
+   * lock a specific event (a confirmed booking, someone else's event): it keeps
+   * its normal look and still responds to taps, it just can't be picked up. Use
+   * this for events that can *never* move; to reject a move only for certain
+   * targets (an overlap, an out-of-bounds slot), return `false` from `onDragEvent`
+   * instead so the event drags and snaps back.
+   */
+  draggable?: boolean;
+  /**
    * How the event renders. `"auto"` (default) is a normal event box/chip;
    * `"background"` paints the event's time range as a non-interactive shaded
    * band behind the grid instead (blocked time, holidays). Background events
