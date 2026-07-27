@@ -174,6 +174,9 @@ export interface TimeGridProps<T = unknown> extends SlotStyleProps<TimeGridSlot>
   timeZone?: string;
   /** Show the all-day lane above the grid (default true). */
   showAllDayEventCell?: boolean;
+  /** Tint Saturday/Sunday columns with the weekend background (default true). Set
+   * false to treat weekends like any other day. */
+  highlightWeekends?: boolean;
   /** date-fns locale for the column headers and time labels. */
   locale?: Locale;
   /** Theme overrides; falls back to the default light theme. */
@@ -374,6 +377,7 @@ export function TimeGrid<T = unknown>({
   businessHours,
   renderBusinessHours,
   showNowIndicator = true,
+  highlightWeekends = true,
   now: nowProp,
   timeZone,
   showAllDayEventCell = true,
@@ -1223,7 +1227,9 @@ export function TimeGrid<T = unknown>({
                   // tint sits behind the grid lines, business-hours shade and events.
                   themed: {
                     borderLeft: `1px solid ${theme.gridLine}`,
-                    ...(isWeekend(day) ? { background: theme.weekendBackground } : null),
+                    ...(highlightWeekends && isWeekend(day)
+                      ? { background: theme.weekendBackground }
+                      : null),
                   },
                 })}
               >

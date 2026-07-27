@@ -193,6 +193,8 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
    * whole-day spans) are not shown on the time grid.
    */
   showAllDayEventCell?: boolean;
+  /** Tint weekend columns (default true). Set false to treat weekends normally. */
+  highlightWeekends?: boolean;
   /** Show the ISO week number in the week/day header gutter. Default false. */
   showWeekNumber?: boolean;
   /** Prefix for the week-number label (e.g. "W"). Default "W". */
@@ -400,6 +402,7 @@ export function Calendar<T>({
   hideHours,
   timeslots,
   showAllDayEventCell,
+  highlightWeekends,
   showWeekNumber,
   weekNumberPrefix,
   hourComponent,
@@ -609,6 +612,7 @@ export function Calendar<T>({
           hideHours={hideHours}
           timeslots={timeslots}
           showAllDayEventCell={showAllDayEventCell}
+          highlightWeekends={highlightWeekends}
           calendarCellStyle={calendarCellStyle}
           businessHours={businessHours}
           renderBusinessHours={renderBusinessHours}

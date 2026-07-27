@@ -65,6 +65,20 @@ describe("dom TimeGrid", () => {
     expect(end.getHours()).toBe(14);
   });
 
+  it("tints weekend columns by default and drops the tint with highlightWeekends=false", () => {
+    const { container, rerender } = render(
+      <TimeGrid date={day} mode="week" events={[]} hourHeight={48} />,
+    );
+    const weekendCols = () => Array.from(container.querySelectorAll<HTMLElement>("[data-weekend]"));
+    expect(weekendCols().length).toBeGreaterThan(0);
+    expect(weekendCols().every((el) => el.style.background !== "")).toBe(true);
+
+    rerender(
+      <TimeGrid date={day} mode="week" events={[]} hourHeight={48} highlightWeekends={false} />,
+    );
+    expect(weekendCols().every((el) => el.style.background === "")).toBe(true);
+  });
+
   it("locks an event with draggable:false: drag is a no-op, taps still fire", () => {
     const onDragEvent = jest.fn();
     const onPressEvent = jest.fn();

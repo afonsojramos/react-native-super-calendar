@@ -235,6 +235,29 @@ describe("TimeGrid cross-page accessibility actions", () => {
   });
 });
 
+describe("TimeGrid weekend shading", () => {
+  const date = new Date(2026, 0, 6, 12, 0, 0); // Tue 6 Jan 2026 -> week has Sat + Sun
+
+  it("tints weekend columns by default and drops them with highlightWeekends=false", () => {
+    const { queryAllByTestId, rerender } = render(
+      <Calendar mode="week" date={date} events={[]} onChangeDate={noop} onPressEvent={noop} />,
+    );
+    expect(queryAllByTestId("weekend-shade")).toHaveLength(2);
+
+    rerender(
+      <Calendar
+        mode="week"
+        date={date}
+        events={[]}
+        highlightWeekends={false}
+        onChangeDate={noop}
+        onPressEvent={noop}
+      />,
+    );
+    expect(queryAllByTestId("weekend-shade")).toHaveLength(0);
+  });
+});
+
 describe("TimeGrid column header", () => {
   const date = new Date(2026, 0, 6, 12, 0, 0); // Tue 6 Jan 2026
 

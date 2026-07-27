@@ -913,6 +913,7 @@ type TimetablePageProps<T> = {
   timeslots: number;
   isRTL: boolean;
   showAllDayEventCell: boolean;
+  highlightWeekends: boolean;
   showVerticalScrollIndicator: boolean;
   verticalScrollEnabled: boolean;
   hourComponent?: HourRenderer;
@@ -967,6 +968,7 @@ function TimetablePageInner<T>({
   timeslots,
   isRTL,
   showAllDayEventCell,
+  highlightWeekends,
   showVerticalScrollIndicator,
   verticalScrollEnabled,
   hourComponent,
@@ -1385,7 +1387,7 @@ function TimetablePageInner<T>({
             )}
 
             {days.map((day, dayIndex) => {
-              if (!isWeekend(day)) return null;
+              if (!highlightWeekends || !isWeekend(day)) return null;
               const shadeSlot = slot("weekendShade", {
                 base: [
                   styles.weekendColumn,
@@ -1397,6 +1399,7 @@ function TimetablePageInner<T>({
               return (
                 <Animated.View
                   key={`weekend-${day.toISOString()}`}
+                  testID="weekend-shade"
                   {...shadeSlot}
                   style={[shadeSlot.style, fullHeightStyle]}
                 />
@@ -1638,6 +1641,9 @@ export type TimeGridProps<T> = SlotStyleProps<TimeGridSlot> & {
   timeslots?: number;
   /** Show the all-day lane above the grid. Default true. */
   showAllDayEventCell?: boolean;
+  /** Tint Saturday/Sunday columns with the weekend background. Default true. Set
+   * false to treat weekends like any other day. */
+  highlightWeekends?: boolean;
   /** Per-date style merged onto each day column. */
   calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
   businessHours?: BusinessHours;
@@ -1723,6 +1729,7 @@ function TimeGridInner<T>({
   hideHours = false,
   timeslots = 1,
   showAllDayEventCell = true,
+  highlightWeekends = true,
   calendarCellStyle,
   businessHours,
   renderBusinessHours,
@@ -2194,6 +2201,7 @@ function TimeGridInner<T>({
           timeslots={timeslots}
           isRTL={isRTL}
           showAllDayEventCell={showAllDayEventCell}
+          highlightWeekends={highlightWeekends}
           showVerticalScrollIndicator={showVerticalScrollIndicator}
           verticalScrollEnabled={verticalScrollEnabled}
           hourComponent={hourComponent}
@@ -2242,6 +2250,7 @@ function TimeGridInner<T>({
       timeslots,
       isRTL,
       showAllDayEventCell,
+      highlightWeekends,
       showVerticalScrollIndicator,
       verticalScrollEnabled,
       hourComponent,

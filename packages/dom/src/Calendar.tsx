@@ -136,6 +136,8 @@ export interface CalendarProps<T = unknown>
   showNowIndicator?: boolean;
   /** Show the all-day lane (default true). */
   showAllDayEventCell?: boolean;
+  /** Tint weekend columns (default true). Set false to treat weekends normally. */
+  highlightWeekends?: boolean;
   /** Snap dragged/created events to this many minutes. */
   dragStepMinutes?: number;
   /** Tap empty grid space. */
@@ -284,6 +286,7 @@ export function Calendar<T = unknown>({
   renderBusinessHours,
   showNowIndicator,
   showAllDayEventCell,
+  highlightWeekends,
   dragStepMinutes,
   onPressCell,
   onCreateEvent,
@@ -446,6 +449,7 @@ export function Calendar<T = unknown>({
         renderBusinessHours={renderBusinessHours}
         showNowIndicator={showNowIndicator}
         showAllDayEventCell={showAllDayEventCell}
+        highlightWeekends={highlightWeekends}
         dragStepMinutes={dragStepMinutes}
         onPressEvent={onPressEvent}
         onPressCell={onPressCell}
