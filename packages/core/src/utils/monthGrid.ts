@@ -1,8 +1,104 @@
-import { format, type Locale, isSameMonth } from "date-fns";
+import { format, type Locale, isSameMonth, startOfDay } from "date-fns";
 import { useMemo } from "react";
-import type { WeekStartsOn } from "../types";
+import type { CalendarEvent, WeekStartsOn } from "../types";
 import { type DateRange, type DateSelectionConstraints, daySelectionState } from "./dateRange";
 import { buildMonthWeeks, getIsToday, isWeekend } from "./dates";
+
+/**
+ * One event's placement within a single week row of the month grid: the column
+ * span it covers and the lane (stacked row) it sits in, plus whether it continues
+ * past this row's edges (so the renderer can draw a "continues" affordance and
+ * square off the clipped end). Columns index into the row's `days` array, so with
+ * `hiddenDays` a bar spans the visible columns it touches.
+ */
+export interface MonthEventSegment<T = unknown> {
+  event: CalendarEvent<T>;
+  /** First covered column in the row (0-based, inclusive). */
+  startCol: number;
+  /** Last covered column in the row (inclusive). */
+  endCol: number;
+  /** Stacking row within the day cells; 0 is the topmost. */
+  lane: number;
+  /** The event started before this row's first day. */
+  continuesBefore: boolean;
+  /** The event ends after this row's last day. */
+  continuesAfter: boolean;
+}
+
+/** The laid-out event segments for one week row, with the number of lanes used. */
+export interface MonthWeekEvents<T = unknown> {
+  segments: MonthEventSegment<T>[];
+  /** Highest lane index used + 1 (0 when the row has no events). */
+  laneCount: number;
+}
+
+/** The last calendar day an event visibly covers (a midnight end ends the day before). */
+function lastCoveredDay(event: CalendarEvent<unknown>): number {
+  const endMs = event.end.getTime();
+  // Clamp to the start so a zero/negative-length event still covers its start day.
+  return startOfDay(new Date(Math.max(event.start.getTime(), endMs - 1))).getTime();
+}
+
+/**
+ * Lay out one week row's events as continuous horizontal bars: each event becomes
+ * a single segment spanning the columns it covers (not a chip repeated per day),
+ * stacked into lanes so overlapping events sit on separate rows. Multi-day events
+ * that cross the row edges are marked `continuesBefore`/`continuesAfter`. Shared by
+ * both renderers so the month grid draws identical spanning bars.
+ *
+ * Lanes are packed greedily after sorting by start column then longest span first,
+ * matching how calendars keep long events on the upper lanes.
+ */
+export function layoutMonthWeek<T>(
+  days: Date[],
+  events: readonly CalendarEvent<T>[],
+): MonthWeekEvents<T> {
+  if (days.length === 0) return { segments: [], laneCount: 0 };
+  const dayStarts = days.map((d) => startOfDay(d).getTime());
+  const rowStart = dayStarts[0];
+  const rowEnd = dayStarts[dayStarts.length - 1];
+
+  const placed: MonthEventSegment<T>[] = [];
+  for (const event of events) {
+    const evStart = startOfDay(event.start).getTime();
+    const evLast = lastCoveredDay(event);
+    // Skip events entirely outside this row.
+    if (evLast < rowStart || evStart > rowEnd) continue;
+    const startCol = dayStarts.findIndex((d) => d >= evStart);
+    // First column whose day is past the event's last covered day, minus one.
+    let endCol = dayStarts.length - 1;
+    for (let i = dayStarts.length - 1; i >= 0; i--) {
+      if (dayStarts[i] <= evLast) {
+        endCol = i;
+        break;
+      }
+    }
+    placed.push({
+      event,
+      startCol: startCol === -1 ? 0 : startCol,
+      endCol,
+      lane: 0,
+      continuesBefore: evStart < rowStart,
+      continuesAfter: evLast > rowEnd,
+    });
+  }
+
+  // Longest, earliest segments claim the upper lanes first.
+  placed.sort((a, b) => a.startCol - b.startCol || b.endCol - b.startCol - (a.endCol - a.startCol));
+  const laneEnds: number[] = [];
+  for (const seg of placed) {
+    let lane = laneEnds.findIndex((end) => end < seg.startCol);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(seg.endCol);
+    } else {
+      laneEnds[lane] = seg.endCol;
+    }
+    seg.lane = lane;
+  }
+
+  return { segments: placed, laneCount: laneEnds.length };
+}
 
 /** A single day in the grid, with all the state a custom cell needs to render. */
 export interface MonthGridDay {
