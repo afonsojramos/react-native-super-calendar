@@ -10,10 +10,10 @@ and update your own event state in response.
 ## Move and resize
 
 Pass `onDragEvent` to make events draggable. Move an event (**long-press** it on
-native, **click-drag** it on web), or **drag the grip** at its bottom edge to
-resize. Drag **vertically to change the time, horizontally to move it to another
-day** (within the visible range). New `start`/`end` are snapped to
-`dragStepMinutes` (default 15).
+native, **click-drag** it on web), or **drag the grip** at its **bottom edge to
+change the end** or its **top edge to change the start**. Drag **vertically to
+change the time, horizontally to move it to another day** (within the visible
+range). New `start`/`end` are snapped to `dragStepMinutes` (default 15).
 
 ```tsx
 <Calendar

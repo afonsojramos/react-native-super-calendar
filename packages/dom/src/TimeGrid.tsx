@@ -232,7 +232,9 @@ export interface TimeGridProps<T = unknown> extends SlotStyleProps<TimeGridSlot>
 
 type DragState = {
   key: string;
-  kind: "move" | "resize";
+  // "resize" drags the bottom edge (changes the end); "resize-start" drags the
+  // top edge (changes the start, end fixed).
+  kind: "move" | "resize" | "resize-start";
   startHours: number;
   durationHours: number;
   /** Whole day columns the box has been dragged across, clamped to the view. */
@@ -655,13 +657,20 @@ export function TimeGrid<T = unknown>({
           }
         }
       }
-    } else {
+    } else if (d.kind === "resize") {
       const durationHours = clamp(
         snap(dragOrigin.current.durationHours + dHours),
         snapHours,
         Math.max(snapHours, windowEnd - d.startHours),
       );
       applyDrag({ ...d, durationHours, moved: true });
+    } else {
+      // Top-edge resize: move the start, keep the end fixed. Clamp the start into
+      // the window and never past one snap step before the end.
+      const o = dragOrigin.current;
+      const end = o.startHours + o.durationHours;
+      const startHours = clamp(snap(o.startHours + dHours), windowStart, end - snapHours);
+      applyDrag({ ...d, startHours, durationHours: end - startHours, moved: true });
     }
   };
 
@@ -713,7 +722,7 @@ export function TimeGrid<T = unknown>({
     e: ReactPointerEvent,
     event: CalendarEvent<T>,
     key: string,
-    kind: "move" | "resize",
+    kind: "move" | "resize" | "resize-start",
     startHours: number,
     durationHours: number,
     dayIndex: number,
@@ -1391,6 +1400,31 @@ export function TimeGrid<T = unknown>({
                       ) : (
                         <DefaultDomEvent {...args} theme={theme} boxProps={slot("eventBox")} />
                       )}
+                      {draggable && !pe.continuesBefore ? (
+                        <div
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            beginDrag(
+                              e,
+                              pe.event,
+                              key,
+                              "resize-start",
+                              pe.startHours,
+                              pe.durationHours,
+                              dayIndex,
+                            );
+                          }}
+                          style={{
+                            position: "absolute",
+                            left: 0,
+                            right: 0,
+                            top: 0,
+                            height: 8,
+                            cursor: "ns-resize",
+                            touchAction: "none",
+                          }}
+                        />
+                      ) : null}
                       {draggable ? (
                         <div
                           onPointerDown={(e) => {

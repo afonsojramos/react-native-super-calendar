@@ -313,12 +313,20 @@ function AnimatedEventBox<T>({
     onDragEvent != null && !positioned.event.disabled && positioned.event.draggable !== false;
   // Only the segment that owns the real end may be resized.
   const resizable = draggable && !positioned.continuesAfter;
+  // Only the segment that owns the real start may be resized from the top edge.
+  // Disabled on react-native-web: moving the box's top during its own child
+  // gesture drops the gesture there (a web-only gesture-handler quirk); on a
+  // device the top grip wins over the long-press move as usual. The dom renderer
+  // provides top-edge resize on the web.
+  const resizableFromStart = draggable && !positioned.continuesBefore && !isWeb;
 
   // Live preview offsets (px), reset to 0 once the committed change re-renders.
   // moveOffsetX shifts the box across day columns during a cross-day drag.
   const moveOffset = useSharedValue(0);
   const moveOffsetX = useSharedValue(0);
+  // Bottom-edge resize (changes the end) and top-edge resize (changes the start).
   const resizeDelta = useSharedValue(0);
+  const resizeStartDelta = useSharedValue(0);
   // Raised to DRAG_EVENT_Z while a gesture is active so the dragged event floats
   // above all the others, then back to 0 when it settles.
   const dragZ = useSharedValue(0);
@@ -347,13 +355,18 @@ function AnimatedEventBox<T>({
   // renderers can reveal detail progressively as the grid zooms, without
   // re-rendering. Explicit deps so the worklet re-captures the event's geometry.
   const boxHeight = useDerivedValue(
-    () => Math.max(durationHours * cellHeight.value + resizeDelta.value, MIN_EVENT_HEIGHT),
+    () =>
+      Math.max(
+        durationHours * cellHeight.value + resizeDelta.value - resizeStartDelta.value,
+        MIN_EVENT_HEIGHT,
+      ),
     [durationHours],
   );
 
   const boxStyle = useAnimatedStyle(
     () => ({
-      top: (startHours - minHour) * cellHeight.value + moveOffset.value,
+      // A top-edge resize pushes the box down and shortens it (start moves later).
+      top: (startHours - minHour) * cellHeight.value + moveOffset.value + resizeStartDelta.value,
       height: boxHeight.value,
       transform: [{ translateX: moveOffsetX.value }],
       zIndex: dragZ.value,
@@ -372,7 +385,16 @@ function AnimatedEventBox<T>({
     moveOffsetX.value = 0;
     // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
     resizeDelta.value = 0;
-  }, [positioned.startHours, positioned.durationHours, moveOffset, moveOffsetX, resizeDelta]);
+    // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+    resizeStartDelta.value = 0;
+  }, [
+    positioned.startHours,
+    positioned.durationHours,
+    moveOffset,
+    moveOffsetX,
+    resizeDelta,
+    resizeStartDelta,
+  ]);
 
   // Keep the latest event/handler in a ref so the gestures stay memoized but
   // never call into a stale closure.
@@ -387,7 +409,9 @@ function AnimatedEventBox<T>({
     moveOffsetX.value = 0;
     // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
     resizeDelta.value = 0;
-  }, [moveOffset, moveOffsetX, resizeDelta]);
+    // eslint-disable-next-line react-hooks/immutability -- Reanimated shared value: assigning .value is the intended mutation API
+    resizeStartDelta.value = 0;
+  }, [moveOffset, moveOffsetX, resizeDelta, resizeStartDelta]);
 
   const commitDrag = useCallback(
     (deltaStartMin: number, deltaEndMin: number) => {
@@ -625,6 +649,42 @@ function AnimatedEventBox<T>({
     [resizable, snapMinutes, cellHeight, resizeDelta, dragZ, commitDrag, notifyDragStart],
   );
 
+  // Top-edge resize: dragging the top changes the start (end fixed). Mirrors the
+  // bottom resize but commits a start-delta and previews via resizeStartDelta.
+  const resizeStartGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(resizableFromStart)
+        .onStart(() => {
+          dragZ.value = DRAG_EVENT_Z;
+          runOnJS(notifyDragStart)();
+        })
+        .onUpdate((event) => {
+          resizeStartDelta.value = event.translationY;
+        })
+        .onEnd((event) => {
+          const delta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
+          if (delta === 0) {
+            resizeStartDelta.value = 0;
+            return;
+          }
+          resizeStartDelta.value = (delta / MINUTES_PER_HOUR) * cellHeight.value;
+          runOnJS(commitDrag)(delta, 0);
+        })
+        .onFinalize(() => {
+          dragZ.value = 0;
+        }),
+    [
+      resizableFromStart,
+      snapMinutes,
+      cellHeight,
+      resizeStartDelta,
+      dragZ,
+      commitDrag,
+      notifyDragStart,
+    ],
+  );
+
   const handlePress = () => onPress(positioned.event);
   // When draggable, a long press grabs the event to move it, so don't also fire
   // the consumer's long-press handler.
@@ -698,6 +758,15 @@ function AnimatedEventBox<T>({
         onPress={handlePress}
         onLongPress={handleLongPress}
       />
+      {resizableFromStart ? (
+        <GestureDetector gesture={resizeStartGesture}>
+          <Animated.View style={styles.resizeHandleTop}>
+            {showDragHandle ? (
+              <View style={[styles.resizeGrip, { backgroundColor: theme.colors.eventText }]} />
+            ) : null}
+          </Animated.View>
+        </GestureDetector>
+      ) : null}
       {resizable ? (
         <GestureDetector gesture={resizeGesture}>
           <Animated.View style={styles.resizeHandle}>
@@ -2652,6 +2721,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    height: RESIZE_HANDLE_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  resizeHandleTop: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
     height: RESIZE_HANDLE_HEIGHT,
     alignItems: "center",
     justifyContent: "center",

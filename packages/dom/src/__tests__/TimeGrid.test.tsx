@@ -65,6 +65,27 @@ describe("dom TimeGrid", () => {
     expect(end.getHours()).toBe(14);
   });
 
+  it("resizes from the top edge: moves the start, keeps the end fixed", () => {
+    const onDragEvent = jest.fn();
+    const { getByText } = render(
+      <TimeGrid date={day} mode="day" events={events} hourHeight={48} onDragEvent={onDragEvent} />,
+    );
+    const box = wrapperOf(getByText("Focus"));
+    // The top handle is the ns-resize strip pinned to the box's top edge.
+    const topHandle = Array.from(box.querySelectorAll<HTMLElement>('div[style*="ns-resize"]')).find(
+      (h) => h.style.top === "0px",
+    )!;
+    // Drag the top down 48px = +1h at 48px/hour: 14:00–16:00 -> 15:00–16:00.
+    fireEvent.pointerDown(topHandle, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(topHandle, { clientY: 348, pointerId: 1 });
+    fireEvent.pointerUp(topHandle, { clientY: 348, pointerId: 1 });
+
+    expect(onDragEvent).toHaveBeenCalledTimes(1);
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect(start.getHours()).toBe(15);
+    expect(end.getHours()).toBe(16);
+  });
+
   it("tints weekend columns by default and drops the tint with highlightWeekends=false", () => {
     const { container, rerender } = render(
       <TimeGrid date={day} mode="week" events={[]} hourHeight={48} />,
