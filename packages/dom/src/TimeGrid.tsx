@@ -177,6 +177,10 @@ export interface TimeGridProps<T = unknown> extends SlotStyleProps<TimeGridSlot>
   /** Tint Saturday/Sunday columns with the weekend background (default true). Set
    * false to treat weekends like any other day. */
   highlightWeekends?: boolean;
+  /** Allow moving events by default (per-event `startEditable` overrides). Default true. */
+  eventStartEditable?: boolean;
+  /** Allow resizing events by default (per-event `durationEditable` overrides). Default true. */
+  eventDurationEditable?: boolean;
   /** date-fns locale for the column headers and time labels. */
   locale?: Locale;
   /** Theme overrides; falls back to the default light theme. */
@@ -380,6 +384,8 @@ export function TimeGrid<T = unknown>({
   renderBusinessHours,
   showNowIndicator = true,
   highlightWeekends = true,
+  eventStartEditable = true,
+  eventDurationEditable = true,
   now: nowProp,
   timeZone,
   showAllDayEventCell = true,
@@ -1324,7 +1330,12 @@ export function TimeGrid<T = unknown>({
                   };
                   // `draggable: false` locks a single event: it keeps its normal
                   // look and still responds to clicks, it just can't be dragged.
-                  const draggable = !!onDragEvent && pe.event.draggable !== false;
+                  // `startEditable`/`durationEditable` (per-event, falling back to
+                  // the grid props) split whether it can be moved vs resized.
+                  const editable = !!onDragEvent && pe.event.draggable !== false;
+                  const canMove = editable && (pe.event.startEditable ?? eventStartEditable);
+                  const canResize =
+                    editable && (pe.event.durationEditable ?? eventDurationEditable);
                   return (
                     <div
                       key={idx}
@@ -1356,7 +1367,7 @@ export function TimeGrid<T = unknown>({
                       // (attached in beginDrag) so the drag survives the columns
                       // remounting on a page change.
                       onPointerDown={
-                        draggable
+                        canMove
                           ? (e) =>
                               beginDrag(
                                 e,
@@ -1370,7 +1381,7 @@ export function TimeGrid<T = unknown>({
                               )
                           : undefined
                       }
-                      onClick={draggable ? undefined : onPress}
+                      onClick={canMove ? undefined : onPress}
                       {...dataState({ "data-dragging": !!active })}
                       {...slot("event", {
                         base: {
@@ -1383,8 +1394,8 @@ export function TimeGrid<T = unknown>({
                           height: boxHeight,
                           left: `calc(${pe.column * widthPct}% + 1px)`,
                           width: `calc(${widthPct}% - 2px)`,
-                          cursor: draggable ? "grab" : "pointer",
-                          touchAction: draggable ? "none" : "auto",
+                          cursor: canMove ? "grab" : "pointer",
+                          touchAction: canMove ? "none" : "auto",
                           zIndex: active ? 3 : 1,
                           opacity: active ? 0.85 : 1,
                           // Snap the dragged box over the target day column so the
@@ -1400,7 +1411,7 @@ export function TimeGrid<T = unknown>({
                       ) : (
                         <DefaultDomEvent {...args} theme={theme} boxProps={slot("eventBox")} />
                       )}
-                      {draggable && !pe.continuesBefore ? (
+                      {canResize && !pe.continuesBefore ? (
                         <div
                           onPointerDown={(e) => {
                             e.stopPropagation();
@@ -1425,7 +1436,7 @@ export function TimeGrid<T = unknown>({
                           }}
                         />
                       ) : null}
-                      {draggable ? (
+                      {canResize ? (
                         <div
                           onPointerDown={(e) => {
                             e.stopPropagation();

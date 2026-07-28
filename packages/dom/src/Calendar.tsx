@@ -138,6 +138,10 @@ export interface CalendarProps<T = unknown>
   showAllDayEventCell?: boolean;
   /** Tint weekend columns (default true). Set false to treat weekends normally. */
   highlightWeekends?: boolean;
+  /** Allow moving events by default (per-event `startEditable` overrides). Default true. */
+  eventStartEditable?: boolean;
+  /** Allow resizing events by default (per-event `durationEditable` overrides). Default true. */
+  eventDurationEditable?: boolean;
   /** Snap dragged/created events to this many minutes. */
   dragStepMinutes?: number;
   /** Tap empty grid space. */
@@ -287,6 +291,8 @@ export function Calendar<T = unknown>({
   showNowIndicator,
   showAllDayEventCell,
   highlightWeekends,
+  eventStartEditable,
+  eventDurationEditable,
   dragStepMinutes,
   onPressCell,
   onCreateEvent,
@@ -450,6 +456,8 @@ export function Calendar<T = unknown>({
         showNowIndicator={showNowIndicator}
         showAllDayEventCell={showAllDayEventCell}
         highlightWeekends={highlightWeekends}
+        eventStartEditable={eventStartEditable}
+        eventDurationEditable={eventDurationEditable}
         dragStepMinutes={dragStepMinutes}
         onPressEvent={onPressEvent}
         onPressCell={onPressCell}

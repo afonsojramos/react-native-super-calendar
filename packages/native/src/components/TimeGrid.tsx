@@ -265,6 +265,10 @@ type AnimatedEventBoxProps<T> = {
   onDragEvent?: EventDragHandler<T>;
   onDragStart?: EventDragStartHandler<T>;
   showDragHandle: boolean;
+  // Grid-level defaults for move/resize, overridden per event by
+  // `startEditable`/`durationEditable`.
+  eventStartEditable: boolean;
+  eventDurationEditable: boolean;
   // Page the view one period (dir -1/+1) when the event is dragged past the
   // visible columns and held there. Absent disables edge auto-advance.
   onEdgeAdvance?: (dir: number) => void;
@@ -290,6 +294,8 @@ function AnimatedEventBox<T>({
   onDragStart,
   onEdgeAdvance,
   showDragHandle,
+  eventStartEditable,
+  eventDurationEditable,
 }: AnimatedEventBoxProps<T>) {
   const RenderEventComponent = renderEvent;
   const theme = useCalendarTheme();
@@ -308,17 +314,21 @@ function AnimatedEventBox<T>({
   // Drag-to-move/resize. Native picks the event up on long-press (so a tap or
   // scroll isn't hijacked); web activates after a small drag threshold, so a
   // plain click still selects and a right-click still opens a context menu.
-  // `draggable: false` locks a single event (keeps taps, blocks move/resize).
-  const draggable =
+  // `draggable: false` locks a single event (keeps taps, blocks move/resize);
+  // `startEditable`/`durationEditable` (per event, falling back to the grid
+  // defaults) split whether it can be moved vs resized.
+  const editable =
     onDragEvent != null && !positioned.event.disabled && positioned.event.draggable !== false;
+  const canMove = editable && (positioned.event.startEditable ?? eventStartEditable);
+  const canResize = editable && (positioned.event.durationEditable ?? eventDurationEditable);
   // Only the segment that owns the real end may be resized.
-  const resizable = draggable && !positioned.continuesAfter;
+  const resizable = canResize && !positioned.continuesAfter;
   // Only the segment that owns the real start may be resized from the top edge.
   // Disabled on react-native-web: moving the box's top during its own child
   // gesture drops the gesture there (a web-only gesture-handler quirk); on a
   // device the top grip wins over the long-press move as usual. The dom renderer
   // provides top-edge resize on the web.
-  const resizableFromStart = draggable && !positioned.continuesBefore && !isWeb;
+  const resizableFromStart = canResize && !positioned.continuesBefore && !isWeb;
 
   // Live preview offsets (px), reset to 0 once the committed change re-renders.
   // moveOffsetX shifts the box across day columns during a cross-day drag.
@@ -504,7 +514,7 @@ function AnimatedEventBox<T>({
 
   const moveGesture = useMemo(() => {
     const pan = Gesture.Pan()
-      .enabled(draggable)
+      .enabled(canMove)
       .onStart((event) => {
         dragZ.value = DRAG_EVENT_Z;
         edgeDir.value = 0;
@@ -593,7 +603,7 @@ function AnimatedEventBox<T>({
           .activeOffsetY([-DRAG_ACTIVATE_PX, DRAG_ACTIVATE_PX])
       : pan.activateAfterLongPress(MOVE_ACTIVATE_MS);
   }, [
-    draggable,
+    canMove,
     snapMinutes,
     cellHeight,
     moveOffset,
@@ -686,10 +696,9 @@ function AnimatedEventBox<T>({
   );
 
   const handlePress = () => onPress(positioned.event);
-  // When draggable, a long press grabs the event to move it, so don't also fire
+  // When movable, a long press grabs the event to move it, so don't also fire
   // the consumer's long-press handler.
-  const handleLongPress =
-    !draggable && onLongPress ? () => onLongPress(positioned.event) : undefined;
+  const handleLongPress = !canMove && onLongPress ? () => onLongPress(positioned.event) : undefined;
 
   // Dragging is gesture-only, so expose the same move/resize commit path as
   // discrete screen-reader actions (VoiceOver/TalkBack invoke them from the
@@ -702,21 +711,28 @@ function AnimatedEventBox<T>({
       : daysPerPage === 1
         ? "day"
         : `${daysPerPage} day${daysPerPage === 1 ? "" : "s"}`;
-  const accessibilityActions = draggable
-    ? [
-        { name: "move-later", label: `Move ${unit(snapMinutes)} later` },
-        { name: "move-earlier", label: `Move ${unit(snapMinutes)} earlier` },
-        ...(resizable
-          ? [
-              { name: "extend", label: `Extend by ${unit(snapMinutes)}` },
-              { name: "shrink", label: `Shorten by ${unit(snapMinutes)}` },
-            ]
-          : []),
-        { name: "move-next-page", label: `Move to next ${pageUnit}` },
-        { name: "move-previous-page", label: `Move to previous ${pageUnit}` },
-      ]
-    : undefined;
-  const handleAccessibilityAction = draggable
+  const dragActions = [
+    ...(canMove
+      ? [
+          { name: "move-later", label: `Move ${unit(snapMinutes)} later` },
+          { name: "move-earlier", label: `Move ${unit(snapMinutes)} earlier` },
+        ]
+      : []),
+    ...(resizable
+      ? [
+          { name: "extend", label: `Extend by ${unit(snapMinutes)}` },
+          { name: "shrink", label: `Shorten by ${unit(snapMinutes)}` },
+        ]
+      : []),
+    ...(canMove
+      ? [
+          { name: "move-next-page", label: `Move to next ${pageUnit}` },
+          { name: "move-previous-page", label: `Move to previous ${pageUnit}` },
+        ]
+      : []),
+  ];
+  const accessibilityActions = dragActions.length ? dragActions : undefined;
+  const handleAccessibilityAction = accessibilityActions
     ? (e: AccessibilityActionEvent) => {
         switch (e.nativeEvent.actionName) {
           case "move-later":
@@ -781,7 +797,9 @@ function AnimatedEventBox<T>({
     </Animated.View>
   );
 
-  if (!draggable) return box;
+  // Only wrap in the move gesture when movable; the resize grips inside `box`
+  // carry their own gestures, so a resize-only event still works.
+  if (!canMove) return box;
   return <GestureDetector gesture={moveGesture}>{box}</GestureDetector>;
 }
 
@@ -996,6 +1014,8 @@ type TimetablePageProps<T> = {
   keyExtractor: EventKeyExtractor<T>;
   snapMinutes: number;
   showDragHandle: boolean;
+  eventStartEditable: boolean;
+  eventDurationEditable: boolean;
   onPressEvent: (event: CalendarEvent<T>) => void;
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
   onDragEvent?: EventDragHandler<T>;
@@ -1051,6 +1071,8 @@ function TimetablePageInner<T>({
   keyExtractor,
   snapMinutes,
   showDragHandle,
+  eventStartEditable,
+  eventDurationEditable,
   onPressEvent,
   onLongPressEvent,
   onDragEvent,
@@ -1605,6 +1627,8 @@ function TimetablePageInner<T>({
                       renderEvent={renderEvent}
                       snapMinutes={snapMinutes}
                       showDragHandle={showDragHandle}
+                      eventStartEditable={eventStartEditable}
+                      eventDurationEditable={eventDurationEditable}
                       onPress={onPressEvent}
                       onLongPress={onLongPressEvent}
                       onDragEvent={onDragEvent}
@@ -1761,6 +1785,10 @@ export type TimeGridProps<T> = SlotStyleProps<TimeGridSlot> & {
    * drag-to-move and drag-to-resize working while hiding the visible indicator.
    */
   showDragHandle?: boolean;
+  /** Allow moving events by default (per-event `startEditable` overrides). Default true. */
+  eventStartEditable?: boolean;
+  /** Allow resizing events by default (per-event `durationEditable` overrides). Default true. */
+  eventDurationEditable?: boolean;
   onPressEvent: (event: CalendarEvent<T>) => void;
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
   /**
@@ -1825,6 +1853,8 @@ function TimeGridInner<T>({
   resetPageOnPressCell = false,
   dragStepMinutes = DEFAULT_DRAG_STEP_MINUTES,
   showDragHandle = true,
+  eventStartEditable = true,
+  eventDurationEditable = true,
   onPressEvent,
   onLongPressEvent,
   onDragEvent,
@@ -2284,6 +2314,8 @@ function TimeGridInner<T>({
           keyExtractor={keyExtractor}
           snapMinutes={Math.max(1, dragStepMinutes)}
           showDragHandle={showDragHandle}
+          eventStartEditable={eventStartEditable}
+          eventDurationEditable={eventDurationEditable}
           onPressEvent={onPressEvent}
           onLongPressEvent={onLongPressEvent}
           onDragEvent={onDragEvent}
@@ -2332,6 +2364,8 @@ function TimeGridInner<T>({
       keyExtractor,
       dragStepMinutes,
       showDragHandle,
+      eventStartEditable,
+      eventDurationEditable,
       onPressEvent,
       onLongPressEvent,
       onDragEvent,

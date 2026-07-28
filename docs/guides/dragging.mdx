@@ -61,6 +61,22 @@ event draggable and reject the specific drop instead. (For an event that shouldn
 respond to taps either and should read as unavailable, use `disabled: true`, which
 also dims it.)
 
+### Allow only move or only resize
+
+Split the two with `startEditable` (can be moved) and `durationEditable` (can be
+resized), per event or grid-wide via `eventStartEditable` / `eventDurationEditable`
+(both default `true`). A `draggable: false` event stays fully locked regardless.
+
+```tsx
+const events = [
+  { id: "1", title: "Standup", start, end, durationEditable: false }, // move, don't resize
+  { id: "2", title: "Focus", start, end, startEditable: false }, // resize, don't move
+];
+
+// Or a grid-wide default (e.g. resize is off everywhere):
+<Calendar eventDurationEditable={false} onDragEvent={onDrag} /* ... */ />;
+```
+
 ### Reject a drop
 
 Return `false` from `onDragEvent` to refuse a particular placement — the event

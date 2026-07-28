@@ -233,6 +233,41 @@ describe("TimeGrid cross-page accessibility actions", () => {
     const bar = getByLabelText(/Standup, 09:00 to 10:00/);
     expect(bar.props.accessibilityActions ?? []).toHaveLength(0);
   });
+
+  it("splits move vs resize with startEditable/durationEditable", () => {
+    const names = (el: { props: { accessibilityActions?: { name: string }[] } }) =>
+      (el.props.accessibilityActions ?? []).map((a) => a.name);
+
+    // startEditable: false -> resize-only (no move actions, resize actions stay).
+    const moveOnly = render(
+      <Calendar
+        mode="week"
+        date={date}
+        events={[{ ...event, startEditable: false }]}
+        onChangeDate={noop}
+        onPressEvent={noop}
+        onDragEvent={jest.fn()}
+      />,
+    );
+    const a = names(moveOnly.getByLabelText(/Standup, 09:00 to 10:00/));
+    expect(a).not.toContain("move-later");
+    expect(a).toContain("extend");
+
+    // durationEditable: false -> move-only (move actions stay, no resize actions).
+    const resizeless = render(
+      <Calendar
+        mode="week"
+        date={date}
+        events={[{ ...event, durationEditable: false }]}
+        onChangeDate={noop}
+        onPressEvent={noop}
+        onDragEvent={jest.fn()}
+      />,
+    );
+    const b = names(resizeless.getByLabelText(/Standup, 09:00 to 10:00/));
+    expect(b).toContain("move-later");
+    expect(b).not.toContain("extend");
+  });
 });
 
 describe("TimeGrid weekend shading", () => {

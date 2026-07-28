@@ -36,6 +36,18 @@ export interface ICalendarEvent {
    */
   draggable?: boolean;
   /**
+   * Whether this event can be moved (dragged to a new time/day). Defaults to the
+   * grid's `eventStartEditable` (itself `true`). Set `false` to allow only resize.
+   * A `draggable: false` event ignores this (it can neither move nor resize).
+   */
+  startEditable?: boolean;
+  /**
+   * Whether this event can be resized (its start or end edge dragged). Defaults to
+   * the grid's `eventDurationEditable` (itself `true`). Set `false` to allow only
+   * move. A `draggable: false` event ignores this (it can neither move nor resize).
+   */
+  durationEditable?: boolean;
+  /**
    * How the event renders. `"auto"` (default) is a normal event box/chip;
    * `"background"` paints the event's time range as a non-interactive shaded
    * band behind the grid instead (blocked time, holidays). Background events

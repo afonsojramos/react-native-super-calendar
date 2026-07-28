@@ -195,6 +195,10 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   showAllDayEventCell?: boolean;
   /** Tint weekend columns (default true). Set false to treat weekends normally. */
   highlightWeekends?: boolean;
+  /** Allow moving events by default (per-event `startEditable` overrides). Default true. */
+  eventStartEditable?: boolean;
+  /** Allow resizing events by default (per-event `durationEditable` overrides). Default true. */
+  eventDurationEditable?: boolean;
   /** Show the ISO week number in the week/day header gutter. Default false. */
   showWeekNumber?: boolean;
   /** Prefix for the week-number label (e.g. "W"). Default "W". */
@@ -403,6 +407,8 @@ export function Calendar<T>({
   timeslots,
   showAllDayEventCell,
   highlightWeekends,
+  eventStartEditable,
+  eventDurationEditable,
   showWeekNumber,
   weekNumberPrefix,
   hourComponent,
@@ -613,6 +619,8 @@ export function Calendar<T>({
           timeslots={timeslots}
           showAllDayEventCell={showAllDayEventCell}
           highlightWeekends={highlightWeekends}
+          eventStartEditable={eventStartEditable}
+          eventDurationEditable={eventDurationEditable}
           calendarCellStyle={calendarCellStyle}
           businessHours={businessHours}
           renderBusinessHours={renderBusinessHours}

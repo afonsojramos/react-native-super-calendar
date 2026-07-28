@@ -86,6 +86,42 @@ describe("dom TimeGrid", () => {
     expect(end.getHours()).toBe(16);
   });
 
+  it("durationEditable:false keeps an event movable but removes its resize handles", () => {
+    const { getByText } = render(
+      <TimeGrid
+        date={day}
+        mode="day"
+        events={[{ ...events[0], durationEditable: false }]}
+        hourHeight={48}
+        onDragEvent={jest.fn()}
+      />,
+    );
+    const box = wrapperOf(getByText("Focus"));
+    expect(box.querySelectorAll('div[style*="ns-resize"]')).toHaveLength(0);
+    expect(box.style.cursor).toBe("grab");
+  });
+
+  it("startEditable:false keeps an event resizable but not movable", () => {
+    const onDragEvent = jest.fn();
+    const { getByText } = render(
+      <TimeGrid
+        date={day}
+        mode="day"
+        events={[{ ...events[0], startEditable: false }]}
+        hourHeight={48}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const box = wrapperOf(getByText("Focus"));
+    expect(box.style.cursor).toBe("pointer");
+    expect(box.querySelectorAll('div[style*="ns-resize"]').length).toBeGreaterThan(0);
+    // A drag on the body does not move it.
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 204, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 204, pointerId: 1 });
+    expect(onDragEvent).not.toHaveBeenCalled();
+  });
+
   it("tints weekend columns by default and drops the tint with highlightWeekends=false", () => {
     const { container, rerender } = render(
       <TimeGrid date={day} mode="week" events={[]} hourHeight={48} />,
