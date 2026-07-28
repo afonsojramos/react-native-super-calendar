@@ -101,6 +101,54 @@ describe("dom TimeGrid", () => {
     expect(box.style.cursor).toBe("grab");
   });
 
+  it("eventOverlap={false} rejects a drag that would collide with another event", () => {
+    const onDragEvent = jest.fn();
+    const two: CalendarEvent[] = [
+      { title: "A", start: new Date(2026, 5, 26, 9, 0), end: new Date(2026, 5, 26, 10, 0) },
+      { title: "B", start: new Date(2026, 5, 26, 12, 0), end: new Date(2026, 5, 26, 13, 0) },
+    ];
+    const { getByText } = render(
+      <TimeGrid
+        date={day}
+        mode="day"
+        events={two}
+        hourHeight={48}
+        eventOverlap={false}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const box = wrapperOf(getByText("A"));
+    // Drag A (09:00) down 3h to 12:00, landing on B -> rejected, handler not called.
+    fireEvent.pointerDown(box, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 244, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 244, pointerId: 1 });
+    expect(onDragEvent).not.toHaveBeenCalled();
+  });
+
+  it("eventOverlap={false} still allows a drag to a free slot", () => {
+    const onDragEvent = jest.fn();
+    const two: CalendarEvent[] = [
+      { title: "A", start: new Date(2026, 5, 26, 9, 0), end: new Date(2026, 5, 26, 10, 0) },
+      { title: "B", start: new Date(2026, 5, 26, 12, 0), end: new Date(2026, 5, 26, 13, 0) },
+    ];
+    const { getByText } = render(
+      <TimeGrid
+        date={day}
+        mode="day"
+        events={two}
+        hourHeight={48}
+        eventOverlap={false}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const box = wrapperOf(getByText("A"));
+    // Drag A down 5h to 14:00, a free slot -> committed.
+    fireEvent.pointerDown(box, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 340, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 340, pointerId: 1 });
+    expect(onDragEvent).toHaveBeenCalledTimes(1);
+  });
+
   it("startEditable:false keeps an event resizable but not movable", () => {
     const onDragEvent = jest.fn();
     const { getByText } = render(

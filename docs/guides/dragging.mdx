@@ -97,6 +97,15 @@ onDragEvent={(event, start, end) => {
 }}
 ```
 
+The overlap case is common enough that it's built in: set `eventOverlap={false}` and
+the grid rejects any drag or resize that would land an event on top of another,
+without you checking in `onDragEvent`. For your own rules, `eventsOverlap` and
+`overlapsOtherEvents` are exported from `@super-calendar/core`.
+
+```tsx
+<Calendar eventOverlap={false} onDragEvent={onDrag} /* ... */ />
+```
+
 ### Haptics on grab
 
 `onDragStart` fires the instant an event is picked up for a move or resize,

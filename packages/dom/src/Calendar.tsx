@@ -142,6 +142,8 @@ export interface CalendarProps<T = unknown>
   eventStartEditable?: boolean;
   /** Allow resizing events by default (per-event `durationEditable` overrides). Default true. */
   eventDurationEditable?: boolean;
+  /** Reject drags/resizes that would overlap another event (default true = allowed). */
+  eventOverlap?: boolean;
   /** Snap dragged/created events to this many minutes. */
   dragStepMinutes?: number;
   /** Tap empty grid space. */
@@ -293,6 +295,7 @@ export function Calendar<T = unknown>({
   highlightWeekends,
   eventStartEditable,
   eventDurationEditable,
+  eventOverlap,
   dragStepMinutes,
   onPressCell,
   onCreateEvent,
@@ -458,6 +461,7 @@ export function Calendar<T = unknown>({
         highlightWeekends={highlightWeekends}
         eventStartEditable={eventStartEditable}
         eventDurationEditable={eventDurationEditable}
+        eventOverlap={eventOverlap}
         dragStepMinutes={dragStepMinutes}
         onPressEvent={onPressEvent}
         onPressCell={onPressCell}

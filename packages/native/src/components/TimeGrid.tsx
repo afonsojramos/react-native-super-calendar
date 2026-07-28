@@ -74,6 +74,7 @@ import {
   cellRangeFromDrag,
   useNow,
   closedHourBands,
+  overlapsOtherEvents,
   pageStepDays,
   resolveDraggedBounds,
   snapDeltaMinutes,
@@ -1789,6 +1790,9 @@ export type TimeGridProps<T> = SlotStyleProps<TimeGridSlot> & {
   eventStartEditable?: boolean;
   /** Allow resizing events by default (per-event `durationEditable` overrides). Default true. */
   eventDurationEditable?: boolean;
+  /** Allow a dragged/resized event to overlap another (default true). Set false to
+   * reject a drop that would collide, snapping the event back. */
+  eventOverlap?: boolean;
   onPressEvent: (event: CalendarEvent<T>) => void;
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
   /**
@@ -1855,9 +1859,10 @@ function TimeGridInner<T>({
   showDragHandle = true,
   eventStartEditable = true,
   eventDurationEditable = true,
+  eventOverlap = true,
   onPressEvent,
   onLongPressEvent,
-  onDragEvent,
+  onDragEvent: onDragEventProp,
   onDragStart,
   onPressCell,
   onLongPressCell,
@@ -1881,6 +1886,15 @@ function TimeGridInner<T>({
     () => withEventAccessibilityLabel(renderEvent, eventAccessibilityLabel, ampm),
     [renderEvent, eventAccessibilityLabel, ampm],
   );
+
+  // Reject a drop that would overlap another event when `eventOverlap` is false,
+  // so every commit path (drag, resize, cross-week, screen-reader actions) enforces
+  // it without the consumer wiring it in `onDragEvent`.
+  const onDragEvent = useMemo(() => {
+    if (!onDragEventProp || eventOverlap !== false) return onDragEventProp;
+    return (event: CalendarEvent<T>, start: Date, end: Date) =>
+      overlapsOtherEvents(events, event, start, end) ? false : onDragEventProp(event, start, end);
+  }, [onDragEventProp, eventOverlap, events]);
 
   const { width, height } = useWindowDimensions();
   const listRef = useRef<LegendListRef>(null);

@@ -1,10 +1,40 @@
+import type { CalendarEvent } from "../../types";
 import {
   cellRangeFromDrag,
+  eventsOverlap,
+  overlapsOtherEvents,
   pageStepDays,
   resolveDraggedBounds,
   shiftMinutes,
   snapDeltaMinutes,
 } from "../drag";
+
+describe("eventsOverlap", () => {
+  const at = (h: number, m = 0) => new Date(2026, 0, 6, h, m);
+  it("detects intersecting ranges but not touching edges", () => {
+    expect(eventsOverlap(at(9), at(10), at(9, 30), at(11))).toBe(true);
+    expect(eventsOverlap(at(9), at(10), at(10), at(11))).toBe(false); // touch at 10:00
+    expect(eventsOverlap(at(9), at(10), at(11), at(12))).toBe(false);
+  });
+  it("does not overlap the same wall-clock time on different days", () => {
+    expect(eventsOverlap(at(9), at(10), new Date(2026, 0, 7, 9), new Date(2026, 0, 7, 10))).toBe(
+      false,
+    );
+  });
+});
+
+describe("overlapsOtherEvents", () => {
+  const at = (h: number) => new Date(2026, 0, 6, h);
+  const a: CalendarEvent = { start: at(9), end: at(10), title: "A" };
+  const b: CalendarEvent = { start: at(11), end: at(12), title: "B" };
+  const events = [a, b];
+  it("ignores the event being moved and flags a real collision", () => {
+    // Move A onto B's slot -> collides with B.
+    expect(overlapsOtherEvents(events, a, at(11), at(12))).toBe(true);
+    // Move A to a free slot -> no collision (and it doesn't collide with itself).
+    expect(overlapsOtherEvents(events, a, at(13), at(14))).toBe(false);
+  });
+});
 
 describe("pageStepDays", () => {
   const date = new Date(2026, 5, 24); // Wed 24 Jun 2026

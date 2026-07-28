@@ -199,6 +199,8 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   eventStartEditable?: boolean;
   /** Allow resizing events by default (per-event `durationEditable` overrides). Default true. */
   eventDurationEditable?: boolean;
+  /** Reject drags/resizes that would overlap another event (default true = allowed). */
+  eventOverlap?: boolean;
   /** Show the ISO week number in the week/day header gutter. Default false. */
   showWeekNumber?: boolean;
   /** Prefix for the week-number label (e.g. "W"). Default "W". */
@@ -409,6 +411,7 @@ export function Calendar<T>({
   highlightWeekends,
   eventStartEditable,
   eventDurationEditable,
+  eventOverlap,
   showWeekNumber,
   weekNumberPrefix,
   hourComponent,
@@ -621,6 +624,7 @@ export function Calendar<T>({
           highlightWeekends={highlightWeekends}
           eventStartEditable={eventStartEditable}
           eventDurationEditable={eventDurationEditable}
+          eventOverlap={eventOverlap}
           calendarCellStyle={calendarCellStyle}
           businessHours={businessHours}
           renderBusinessHours={renderBusinessHours}

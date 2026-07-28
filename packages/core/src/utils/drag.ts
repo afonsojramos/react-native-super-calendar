@@ -1,5 +1,28 @@
-import type { CalendarMode, WeekStartsOn } from "../types";
+import type { CalendarEvent, CalendarMode, WeekStartsOn } from "../types";
 import { getViewDays } from "./dates";
+
+/**
+ * True when two time ranges overlap. Edges touching (one ends exactly when the
+ * next begins) do not count as an overlap. Compares absolute instants, so events
+ * at the same wall-clock time on different days do not overlap.
+ */
+export function eventsOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
+  return aStart.getTime() < bEnd.getTime() && bStart.getTime() < aEnd.getTime();
+}
+
+/**
+ * True when the range `[start, end)` would overlap any event in `events` other
+ * than `moved` (compared by reference). Used by the `eventOverlap` guard to reject
+ * a drag/resize that would land an event on top of another.
+ */
+export function overlapsOtherEvents<T>(
+  events: readonly CalendarEvent<T>[],
+  moved: CalendarEvent<T>,
+  start: Date,
+  end: Date,
+): boolean {
+  return events.some((e) => e !== moved && eventsOverlap(e.start, e.end, start, end));
+}
 
 /**
  * How many calendar days one time-grid page spans, used to advance the view by a

@@ -32,6 +32,7 @@ import {
   isSameCalendarDay,
   isWeekend,
   layoutDayEvents,
+  overlapsOtherEvents,
   useNow,
   type TimeGridMode,
   titleNumberOfLines,
@@ -181,6 +182,9 @@ export interface TimeGridProps<T = unknown> extends SlotStyleProps<TimeGridSlot>
   eventStartEditable?: boolean;
   /** Allow resizing events by default (per-event `durationEditable` overrides). Default true. */
   eventDurationEditable?: boolean;
+  /** Allow a dragged/resized event to overlap another (default true). Set false to
+   * reject a drop that would collide, snapping the event back. */
+  eventOverlap?: boolean;
   /** date-fns locale for the column headers and time labels. */
   locale?: Locale;
   /** Theme overrides; falls back to the default light theme. */
@@ -386,6 +390,7 @@ export function TimeGrid<T = unknown>({
   highlightWeekends = true,
   eventStartEditable = true,
   eventDurationEditable = true,
+  eventOverlap = true,
   now: nowProp,
   timeZone,
   showAllDayEventCell = true,
@@ -497,8 +502,14 @@ export function TimeGrid<T = unknown>({
   pageDepsRef.current = { date, mode, weekStartsOn, numberOfDays };
   const onChangeDateRef = useRef(onChangeDate);
   onChangeDateRef.current = onChangeDate;
+  // Wrap the handler so a drop that would overlap another event is rejected when
+  // `eventOverlap` is false, without the consumer wiring it in `onDragEvent`.
   const onDragEventRef = useRef(onDragEvent);
-  onDragEventRef.current = onDragEvent;
+  onDragEventRef.current =
+    onDragEvent && eventOverlap === false
+      ? (event, start, end) =>
+          overlapsOtherEvents(events, event, start, end) ? false : onDragEvent(event, start, end)
+      : onDragEvent;
 
   const allDayByDay = useMemo(
     // A multi-day all-day event shows in every column it overlaps (matching the
