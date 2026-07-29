@@ -86,10 +86,13 @@ export {
 } from "@super-calendar/core";
 export {
   buildMonthGrid,
+  layoutMonthWeek,
+  type MonthEventSegment,
   type MonthGrid,
   type MonthGridDay,
   type MonthGridWeek,
   type MonthGridWeekday,
+  type MonthWeekEvents,
   type UseMonthGridOptions,
   useMonthGrid,
   weekdayFormatToken,
