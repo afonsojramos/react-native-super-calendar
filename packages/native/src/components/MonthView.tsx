@@ -58,6 +58,8 @@ const CELL_ROW_GAP = 2;
 const CHIP_PADDING_V = 2;
 // Where the first event row sits below the date badge (padding + badge + gap).
 const BADGE_AREA = DAY_CELL_PADDING_TOP + DATE_BADGE_HEIGHT + CELL_ROW_GAP;
+// Stable empty layout for the events-free picker (avoids a fresh object per render).
+const EMPTY_LAYOUT = { segments: [], laneCount: 0 } as const;
 // Horizontal inset of a chip within its cell (mirrors `styles.monthEvent`).
 const CHIP_INSET_H = 4;
 // Pre-measure fallback so the first paint isn't empty or overflowing.
@@ -113,9 +115,12 @@ export type MonthViewProps<T> = SlotStyleProps<MonthViewSlot> & {
   date: Date;
   events: CalendarEvent<T>[];
   /**
-   * Max event chips per day cell. Omit to auto-fit as many as the cell height
-   * allows (the default); set a number for a fixed cap. Extra events collapse
-   * into a "+N more" label. Auto-fit assumes the built-in chip size — pass an
+   * Max event lanes (stacked rows) shown per week before the rest of a day's
+   * events collapse into a "+N more" label. Because multi-day events draw as one
+   * bar spanning a lane across the week, this caps lanes per row, not chips per
+   * day, so a long bar can push a lightly-booked day's own events into "+N more".
+   * Omit to auto-fit as many lanes as the cell height allows (the default); set a
+   * number for a fixed cap. Auto-fit assumes the built-in chip size — pass an
    * explicit value when using a custom `renderEvent`.
    */
   maxVisibleEventCount?: number;
@@ -307,6 +312,15 @@ function MonthViewInner<T>({
   // Draw the day-cell grid only for an events calendar; the events-free date
   // picker reads cleaner without it (matching the dom renderer).
   const showGrid = events.length > 0;
+
+  // Lay out each week row's spanning bars once per data change, not per render.
+  const weekLayouts = useMemo(
+    () =>
+      showGrid
+        ? weeks.map((week) => layoutMonthWeek(week, collectRowEvents(week, eventsByDay)))
+        : [],
+    [showGrid, weeks, eventsByDay],
+  );
 
   const renderDay = (
     day: Date,
@@ -636,16 +650,25 @@ function MonthViewInner<T>({
         </Modal>
       ) : null}
       <View {...slot("grid", { base: styles.container })} onLayout={handleLayout}>
-        {weeks.map((week) => {
-          // Lay this row's events out as continuous spanning bars: a multi-day
-          // event becomes one bar across its columns (not a chip per day), stacked
-          // into lanes. Cells reserve the lane rows; the bars render in an overlay
-          // so they can span cells. `visibleLanes` mirrors the per-day cap.
-          const rowLayout = showGrid
-            ? layoutMonthWeek(week, collectRowEvents(week, eventsByDay))
-            : { segments: [], laneCount: 0 };
+        {weeks.map((week, weekIndex) => {
+          // Spanning bars for this row (laid out once in `weekLayouts`). A multi-day
+          // event is one bar across its columns, stacked into lanes; the bars render
+          // in an overlay so they can span cells, and the cells reserve the lane rows
+          // so "+more" sits below them. `visibleLanes` mirrors the per-day cap.
+          const rowLayout = weekLayouts[weekIndex] ?? EMPTY_LAYOUT;
           const visibleLanes = monthVisibleCount(rowLayout.laneCount, capacity);
           const cols = week.length;
+          // With adjacent months hidden, clamp bars to the current-month columns so
+          // none draw over the blank leading/trailing cells.
+          let firstVisCol = 0;
+          let lastVisCol = cols - 1;
+          if (showGrid && !showAdjacentMonths) {
+            const first = week.findIndex((d) => isSameMonth(d, date));
+            if (first !== -1) {
+              firstVisCol = first;
+              lastVisCol = cols - 1 - [...week].reverse().findIndex((d) => isSameMonth(d, date));
+            }
+          }
           return (
             <View
               {...slot("week", { base: styles.weekRow, themed: theme.containers.weekRow })}
@@ -656,34 +679,39 @@ function MonthViewInner<T>({
                 <View style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}>
                   {rowLayout.segments
                     .filter((seg) => seg.lane < visibleLanes)
-                    .map((seg) => (
-                      <View
-                        key={`bar-${seg.event.start.toISOString()}:${seg.event.title}:${seg.lane}`}
-                        style={{
-                          position: "absolute",
-                          left: pct((seg.startCol / cols) * 100),
-                          width: pct(((seg.endCol - seg.startCol + 1) / cols) * 100),
-                          top: BADGE_AREA + seg.lane * chipMetrics.chipRowHeight,
-                          height: chipMetrics.chipHeight,
-                          paddingHorizontal: CHIP_INSET_H,
-                          pointerEvents: "box-none",
-                        }}
-                      >
-                        <RenderEventComponent
-                          event={seg.event}
-                          mode="month"
-                          isAllDay={isAllDayEvent(seg.event)}
-                          onPress={
-                            disableMonthEventCellPress ? () => {} : () => onPressEvent(seg.event)
-                          }
-                          onLongPress={
-                            disableMonthEventCellPress || !onLongPressEvent
-                              ? undefined
-                              : () => onLongPressEvent(seg.event)
-                          }
-                        />
-                      </View>
-                    ))}
+                    .map((seg) => {
+                      const startCol = Math.max(seg.startCol, firstVisCol);
+                      const endCol = Math.min(seg.endCol, lastVisCol);
+                      if (startCol > endCol) return null;
+                      return (
+                        <View
+                          key={`bar-${seg.event.start.toISOString()}:${seg.event.title}:${seg.lane}`}
+                          style={{
+                            position: "absolute",
+                            left: pct((startCol / cols) * 100),
+                            width: pct(((endCol - startCol + 1) / cols) * 100),
+                            top: BADGE_AREA + seg.lane * chipMetrics.chipRowHeight,
+                            height: chipMetrics.chipHeight,
+                            paddingHorizontal: CHIP_INSET_H,
+                            pointerEvents: "box-none",
+                          }}
+                        >
+                          <RenderEventComponent
+                            event={seg.event}
+                            mode="month"
+                            isAllDay={isAllDayEvent(seg.event)}
+                            onPress={
+                              disableMonthEventCellPress ? () => {} : () => onPressEvent(seg.event)
+                            }
+                            onLongPress={
+                              disableMonthEventCellPress || !onLongPressEvent
+                                ? undefined
+                                : () => onLongPressEvent(seg.event)
+                            }
+                          />
+                        </View>
+                      );
+                    })}
                 </View>
               ) : null}
             </View>
