@@ -53,8 +53,9 @@ export function buildEvents(): CalendarEvent<EventMeta>[] {
     { id: "7", kind: "health", title: "💪 Physio", start: at(2, 10), end: at(2, 10, 45) },
     { id: "8", kind: "work", title: "📊 Project review", start: at(2, 14), end: at(2, 15) },
     { id: "12", kind: "health", title: "🏋️ Gym", start: at(0, 16), end: at(0, 17) },
-    // A multi-day event: renders on every day it spans, clipped per day.
-    { id: "9", kind: "travel", title: "✈️ Lisbon trip", start: at(3, 17), end: at(5, 21) },
+    // A multi-day event: one continuous bar across the days it spans in month
+    // view, clipped to each day's column on the week/day time grid.
+    { id: "9", kind: "travel", title: "✈️ Lisbon trip", start: at(2, 17), end: at(5, 21) },
     // An all-day event: renders in the lane above the grid, not in the columns.
     {
       id: "10",
