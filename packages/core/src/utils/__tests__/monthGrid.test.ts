@@ -52,6 +52,28 @@ describe("layoutMonthWeek", () => {
     ]);
     expect(laneCount).toBe(1);
   });
+
+  it("lays out a reversed (RTL) week with columns and edge-mapped continues", () => {
+    const rtl = [...days].reverse(); // Sat 27 … Sun 21
+    // Starts before the row (18) and ends Wed 24 (covers 21-24).
+    const { segments } = layoutMonthWeek(rtl, [ev("Long", [18], [25])]);
+    expect(segments).toHaveLength(1);
+    // Days 21-24 sit at the right end of the reversed array (indices 3..6), and
+    // the clipped (chronologically-before) end squares the array's right edge.
+    expect(segments[0]).toMatchObject({
+      startCol: 3,
+      endCol: 6,
+      continuesBefore: false,
+      continuesAfter: true,
+    });
+  });
+
+  it("skips an event that only falls on a hidden interior day", () => {
+    // Mon/Tue/Thu/Fri week (Wed 24 dropped): a Wed-only event has no column here.
+    const noWed = [days[1], days[2], days[4], days[5]];
+    const { segments } = layoutMonthWeek(noWed, [ev("Wed", [24], [25])]);
+    expect(segments).toHaveLength(0);
+  });
 });
 
 const month = new Date(2026, 5, 15); // June 2026

@@ -46,6 +46,11 @@ function lastCoveredDay(event: CalendarEvent<unknown>): number {
  * that cross the row edges are marked `continuesBefore`/`continuesAfter`. Shared by
  * both renderers so the month grid draws identical spanning bars.
  *
+ * Column indices map into the given `days` array in whatever display order it uses,
+ * so this is order-independent: a right-to-left (reversed) week lays out correctly,
+ * and `continuesBefore`/`continuesAfter` track the array's first/last column edge
+ * (not chronology), so the clipped end is squared on the right visual side.
+ *
  * Lanes are packed greedily after sorting by start column then longest span first,
  * matching how calendars keep long events on the upper lanes.
  */
@@ -55,8 +60,10 @@ export function layoutMonthWeek<T>(
 ): MonthWeekEvents<T> {
   if (days.length === 0) return { segments: [], laneCount: 0 };
   const dayStarts = days.map((d) => startOfDay(d).getTime());
-  const rowStart = dayStarts[0];
-  const rowEnd = dayStarts[dayStarts.length - 1];
+  // Chronological bounds, independent of the array's direction (RTL reverses it).
+  const rowStart = Math.min(...dayStarts);
+  const rowEnd = Math.max(...dayStarts);
+  const ascending = dayStarts[0] <= dayStarts[dayStarts.length - 1];
 
   const placed: MonthEventSegment<T>[] = [];
   for (const event of events) {
@@ -64,22 +71,28 @@ export function layoutMonthWeek<T>(
     const evLast = lastCoveredDay(event);
     // Skip events entirely outside this row.
     if (evLast < rowStart || evStart > rowEnd) continue;
-    const startCol = dayStarts.findIndex((d) => d >= evStart);
-    // First column whose day is past the event's last covered day, minus one.
-    let endCol = dayStarts.length - 1;
-    for (let i = dayStarts.length - 1; i >= 0; i--) {
-      if (dayStarts[i] <= evLast) {
+    // Columns this event covers, found by membership so it works in any day order.
+    let startCol = -1;
+    let endCol = -1;
+    for (let i = 0; i < dayStarts.length; i++) {
+      if (dayStarts[i] >= evStart && dayStarts[i] <= evLast) {
+        if (startCol === -1) startCol = i;
         endCol = i;
-        break;
       }
     }
+    // No column in this row covers the event (e.g. it only falls on a hidden
+    // interior day), so it draws no bar here.
+    if (startCol === -1) continue;
+    const startsBefore = evStart < rowStart;
+    const endsAfter = evLast > rowEnd;
     placed.push({
       event,
-      startCol: startCol === -1 ? 0 : startCol,
+      startCol,
       endCol,
       lane: 0,
-      continuesBefore: evStart < rowStart,
-      continuesAfter: evLast > rowEnd,
+      // Map the chronological overflow to the array's first/last column edge.
+      continuesBefore: ascending ? startsBefore : endsAfter,
+      continuesAfter: ascending ? endsAfter : startsBefore,
     });
   }
 
