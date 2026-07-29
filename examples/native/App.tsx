@@ -414,6 +414,18 @@ export default function App() {
                   }
                   startHour={7}
                   endHour={20}
+                  // Custom header: the room name over a muted capacity line,
+                  // showing renderResourceHeader takes full control of the cell.
+                  renderResourceHeader={(resource, index) => (
+                    <View>
+                      <Text style={{ fontWeight: "600" }} numberOfLines={1}>
+                        {resource.title}
+                      </Text>
+                      <Text
+                        style={{ fontSize: 11, opacity: 0.6 }}
+                      >{`${(index + 2) * 4} seats`}</Text>
+                    </View>
+                  )}
                   businessHours={() => ({ start: 9, end: 17 })}
                   onPressCell={(cellAt, resource) =>
                     console.log("press cell:", resource.title, cellAt.toISOString())
