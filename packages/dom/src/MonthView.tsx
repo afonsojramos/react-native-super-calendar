@@ -58,6 +58,9 @@ export type MonthViewSlot =
   | "more"
   | "morePopover";
 
+// Stable empty layout for rows with no events (avoids a fresh object per render).
+const EMPTY_LAYOUT = { segments: [], laneCount: 0 } as const;
+
 // Chip metrics for the events layout (when `events` is provided).
 const DATE_ROW = 24;
 const CHIP_HEIGHT = 18;
@@ -100,7 +103,12 @@ export interface MonthViewProps<T = unknown>
    * announce. Defaults to the event title and day (e.g. "Standup, 15 July").
    */
   eventAccessibilityLabel?: EventAccessibilityLabeler<T>;
-  /** Max chips shown per day before a "+N more" row (default 3). */
+  /**
+   * Max event lanes (stacked rows) shown per week before the rest of a day's
+   * events collapse into a "+N more" row (default 3). Because multi-day events draw
+   * as one bar spanning a lane across the week, this caps lanes per row, not chips
+   * per day, so a long bar can push a lightly-booked day's own events into "+N more".
+   */
   maxVisibleEventCount?: number;
   /** Template for the overflow row; `{moreCount}` is replaced (default "{moreCount} More"). */
   moreLabel?: string;
@@ -511,6 +519,21 @@ export function MonthView<T = unknown>({
     ],
   );
 
+  // Lay out each week row's spanning bars once per data change, not per render, so
+  // hover / popover / drag-create state changes don't relay out every row.
+  const weekLayouts = useMemo(
+    () =>
+      eventsMode
+        ? weeks.map((week) =>
+            layoutMonthWeek(
+              week.days.map((d) => d.date),
+              collectRowEvents(week, eventsByDay),
+            ),
+          )
+        : [],
+    [eventsMode, weeks, eventsByDay],
+  );
+
   // Roving tabindex: only one day is in the tab order; arrow keys move focus
   // within the month, so the grid is a single, sensible tab stop.
   const initialFocus = useMemo(() => {
@@ -633,33 +656,54 @@ export function MonthView<T = unknown>({
         onKeyDown={dayRoving ? onKeyDown : undefined}
         {...slot("grid")}
       >
-        {weeks.map((week) => {
-          // Lay the row's events out as continuous spanning bars: a multi-day event
-          // becomes one bar across its columns (not a chip per day), stacked into
-          // lanes. Show every lane that fits; when they overflow keep the last row
-          // for "+more". The bars render in an overlay so they can span cells; the
-          // cells reserve the lane rows so "+more" sits below them.
-          const rowEvents = eventsMode ? collectRowEvents(week, eventsByDay) : [];
-          const rowLayout = layoutMonthWeek(
-            week.days.map((d) => d.date),
-            rowEvents,
-          );
+        {weeks.map((week, weekIndex) => {
+          // Spanning bars for this row (laid out once in `weekLayouts`). A multi-day
+          // event is one bar across its columns, stacked into lanes; each bar renders
+          // inside its start-column cell (valid grid content that reads with that day)
+          // and overflows right across the days it spans. The cells reserve the lane
+          // rows so "+more" sits below the bars.
+          const rowLayout = weekLayouts[weekIndex] ?? EMPTY_LAYOUT;
           // When lanes overflow, keep the last row for "+more" but always show at
           // least one bar, so a day never collapses to only the overflow row.
           const overflowing = rowLayout.laneCount > maxVisibleEventCount;
           const visibleLanes = overflowing
             ? Math.max(maxVisibleEventCount - 1, 1)
             : rowLayout.laneCount;
+          // With adjacent months hidden, clamp bars to the current-month columns so
+          // none draw over the blank leading/trailing cells.
+          const cols = week.days.length;
+          let firstVisCol = 0;
+          let lastVisCol = cols - 1;
+          if (eventsMode && !showAdjacentMonths) {
+            const first = week.days.findIndex((d) => d.isCurrentMonth);
+            const lastFromEnd = [...week.days].reverse().findIndex((d) => d.isCurrentMonth);
+            if (first !== -1) {
+              firstVisCol = first;
+              lastVisCol = cols - 1 - lastFromEnd;
+            }
+          }
+          const barSegs = rowLayout.segments
+            .filter((s) => s.lane < visibleLanes)
+            .map((s) => {
+              const startCol = Math.max(s.startCol, firstVisCol);
+              const endCol = Math.min(s.endCol, lastVisCol);
+              return {
+                seg: s,
+                startCol,
+                endCol,
+                continuesBefore: s.continuesBefore || startCol > s.startCol,
+                continuesAfter: s.continuesAfter || endCol < s.endCol,
+              };
+            })
+            .filter((b) => b.startCol <= b.endCol);
+          const barChipButton = slot("chipButton", chipButtonDefault);
+          const barChip = slot("chip", chipDefault(theme));
           return (
             <div
               key={week.id}
               role="row"
               {...slot("week", {
-                base: {
-                  position: "relative",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                },
+                base: { display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" },
               })}
             >
               {week.days.map((day, dayCol) => {
@@ -763,14 +807,81 @@ export function MonthView<T = unknown>({
                       <span {...dayData} {...slot("dayBadge", compactBadgeDefault(day, theme))}>
                         {day.label}
                       </span>
+                      {/* Spanning bars that start in this column: absolutely placed,
+                          overflowing right across the days they span. Rendered here
+                          (not a row overlay) so each bar is valid content of its
+                          start day's gridcell and reads with that day. Made
+                          non-interactive mid drag-create so a sweep reaches the
+                          cells beneath. */}
+                      {barSegs
+                        .filter((b) => b.startCol === dayCol)
+                        .map((b) => {
+                          const span = b.endCol - b.startCol + 1;
+                          return (
+                            <button
+                              key={`bar-${b.seg.event.start.toISOString()}:${b.seg.event.title}:${b.seg.lane}`}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onPressEvent?.(b.seg.event);
+                              }}
+                              {...barChipButton}
+                              title={b.seg.event.title}
+                              aria-label={
+                                eventAccessibilityLabel
+                                  ? eventAccessibilityLabel(b.seg.event, {
+                                      mode: "month",
+                                      isAllDay: isAllDayEvent(b.seg.event),
+                                      ampm: false,
+                                    })
+                                  : `${b.seg.event.title}, ${dayLabel}`
+                              }
+                              style={{
+                                ...barChipButton.style,
+                                position: "absolute",
+                                left: 2,
+                                width: `calc(${span * 100}% - 4px)`,
+                                top:
+                                  CELL_PAD +
+                                  DATE_ROW +
+                                  CHIP_GAP +
+                                  b.seg.lane * (CHIP_HEIGHT + CHIP_GAP),
+                                height: CHIP_HEIGHT,
+                                pointerEvents: isCreating ? "none" : "auto",
+                                zIndex: 2,
+                              }}
+                            >
+                              {Chip ? (
+                                <Chip
+                                  event={b.seg.event}
+                                  onPress={() => onPressEvent?.(b.seg.event)}
+                                />
+                              ) : (
+                                <span
+                                  {...barChip}
+                                  style={{
+                                    ...barChip.style,
+                                    ...(b.continuesBefore
+                                      ? { borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }
+                                      : null),
+                                    ...(b.continuesAfter
+                                      ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 }
+                                      : null),
+                                  }}
+                                >
+                                  {b.seg.event.title}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
                       <div
                         {...slot("events", {
                           base: { display: "flex", flexDirection: "column", gap: CHIP_GAP },
                         })}
                       >
-                        {/* Reserve one row per visible lane so the overlay bars have
-                          space and "+more" sits below them; the bars themselves
-                          render in the row overlay (they span cells). */}
+                        {/* Reserve one row per visible lane so the absolute bars have
+                          space and "+more" sits below them. */}
                         {Array.from({ length: visibleLanes }, (_, i) => (
                           <div key={`lane-${i}`} aria-hidden style={{ height: CHIP_HEIGHT }} />
                         ))}
@@ -906,70 +1017,6 @@ export function MonthView<T = unknown>({
                   </button>
                 );
               })}
-              {eventsMode
-                ? rowLayout.segments
-                    .filter((s) => s.lane < visibleLanes)
-                    .map((seg) => {
-                      const chipButton = slot("chipButton", chipButtonDefault);
-                      const chip = slot("chip", chipDefault(theme));
-                      const onPress = () => onPressEvent?.(seg.event);
-                      return (
-                        <button
-                          key={`bar-${seg.event.start.toISOString()}:${seg.event.title}:${seg.lane}`}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPress();
-                          }}
-                          {...chipButton}
-                          title={seg.event.title}
-                          aria-label={
-                            eventAccessibilityLabel
-                              ? eventAccessibilityLabel(seg.event, {
-                                  mode: "month",
-                                  isAllDay: isAllDayEvent(seg.event),
-                                  ampm: false,
-                                })
-                              : `${seg.event.title}, ${format(
-                                  week.days[seg.startCol].date,
-                                  "d MMMM",
-                                  locale ? { locale } : undefined,
-                                )}`
-                          }
-                          style={{
-                            ...chipButton.style,
-                            position: "absolute",
-                            left: `calc(${(seg.startCol / 7) * 100}% + 2px)`,
-                            width: `calc(${((seg.endCol - seg.startCol + 1) / 7) * 100}% - 4px)`,
-                            top:
-                              CELL_PAD + DATE_ROW + CHIP_GAP + seg.lane * (CHIP_HEIGHT + CHIP_GAP),
-                            height: CHIP_HEIGHT,
-                            pointerEvents: "auto",
-                            zIndex: 2,
-                          }}
-                        >
-                          {Chip ? (
-                            <Chip event={seg.event} onPress={onPress} />
-                          ) : (
-                            <span
-                              {...chip}
-                              style={{
-                                ...chip.style,
-                                ...(seg.continuesBefore
-                                  ? { borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }
-                                  : null),
-                                ...(seg.continuesAfter
-                                  ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 }
-                                  : null),
-                              }}
-                            >
-                              {seg.event.title}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })
-                : null}
             </div>
           );
         })}

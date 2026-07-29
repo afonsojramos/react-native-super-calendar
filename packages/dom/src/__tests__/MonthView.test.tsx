@@ -213,9 +213,31 @@ describe("dom MonthView", () => {
       // single spanning bar, not a chip repeated on each day.
       const bars = getAllByText("Trip");
       expect(bars).toHaveLength(1);
-      // The bar spans two columns: 2/7 of the row width, offset by the edge inset.
+      // The bar lives in its start-day cell and spans two columns, so its width is
+      // 2x the cell width (200%), overflowing into the next day.
       const bar = bars[0].closest("button");
-      expect(bar?.style.width).toContain(`${(2 / 7) * 100}%`);
+      expect(bar?.style.width).toContain("200%");
+    });
+
+    it("clips a spanning bar to the current month when adjacent months are hidden", () => {
+      // 31 July 2026 is a Friday; this event runs Fri 31 -> Sat 1 Aug (adjacent).
+      const span: CalendarEvent[] = [
+        { title: "Crosses", start: new Date(2026, 6, 31), end: new Date(2026, 7, 2) },
+      ];
+      const { getAllByText } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={span}
+          showAdjacentMonths={false}
+        />,
+      );
+      // One bar, clipped to the single visible (July) column, so it never draws
+      // over the blank trailing-month cell.
+      const bars = getAllByText("Crosses");
+      expect(bars).toHaveLength(1);
+      const bar = bars[0].closest("button");
+      expect(bar?.style.width).toContain("100%");
     });
   });
 
@@ -330,6 +352,27 @@ describe("dom MonthView", () => {
       expect(start).toEqual(new Date(2026, 6, 6));
       // End is exclusive: midnight after the last dragged day.
       expect(end).toEqual(new Date(2026, 6, 9));
+    });
+
+    it("sweeps through a day that has an event bar (bars go non-interactive mid-create)", () => {
+      const onCreateEvent = jest.fn();
+      const { container } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          // An event on the 7th sits in the sweep path; its bar must not block it.
+          events={[
+            { title: "Blocker", start: new Date(2026, 6, 7), end: new Date(2026, 6, 7, 10) },
+          ]}
+          onCreateEvent={onCreateEvent}
+        />,
+      );
+      fireEvent.pointerDown(dayCell(container, "2026-07-06"), { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-08"));
+      // The event-bearing day between the anchor and hover is still swept.
+      expect(dayCell(container, "2026-07-07").hasAttribute("data-creating")).toBe(true);
+      fireEvent.pointerUp(window);
+      expect(onCreateEvent).toHaveBeenCalledTimes(1);
     });
 
     it("does not fire on a plain click (no drag), leaving onPressDay to handle it", () => {
