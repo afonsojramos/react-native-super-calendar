@@ -38,8 +38,10 @@ the rest of a day's events into a `+N more` label.
 <Calendar mode="month" maxVisibleEventCount={3} /* ... */ />   // fixed cap
 ```
 
-- `maxVisibleEventCount` — a fixed cap instead of auto-fit. Recommended when you
-  pass a custom `renderEvent`, since auto-fit assumes the built-in chip height.
+- `maxVisibleEventCount` — a fixed cap on **lanes per week row** instead of
+  auto-fit. Because a multi-day bar occupies a lane across the whole week, a long
+  bar can push a lightly-booked day's own events into `+N more`. Recommended when
+  you pass a custom `renderEvent`, since auto-fit assumes the built-in chip height.
 - `onPressMore` — tap the overflow label; receives the hidden events and the
   day. Without it, the built-in popover opens instead, listing the day's events
   (style it via the `morePopover` slot).
