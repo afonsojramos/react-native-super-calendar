@@ -202,15 +202,20 @@ describe("dom MonthView", () => {
       expect(getByText("Lunch")).toBeTruthy();
     });
 
-    it("spreads a multi-day event across each day it covers", () => {
+    it("draws a multi-day event as one continuous bar spanning its days", () => {
       const span: CalendarEvent[] = [
         { title: "Trip", start: new Date(2026, 6, 14), end: new Date(2026, 6, 16) },
       ];
       const { getAllByText } = render(
         <MonthView date={new Date(2026, 6, 1)} weekStartsOn={1} events={span} />,
       );
-      // Covers the 14th and 15th (end exclusive at midnight of the 16th).
-      expect(getAllByText("Trip").length).toBe(2);
+      // Covers the 14th and 15th (end exclusive at midnight of the 16th) as a
+      // single spanning bar, not a chip repeated on each day.
+      const bars = getAllByText("Trip");
+      expect(bars).toHaveLength(1);
+      // The bar spans two columns: 2/7 of the row width, offset by the edge inset.
+      const bar = bars[0].closest("button");
+      expect(bar?.style.width).toContain(`${(2 / 7) * 100}%`);
     });
   });
 

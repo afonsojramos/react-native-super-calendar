@@ -29,8 +29,9 @@ import {
   groupEventsByDay,
   isBackgroundEvent,
   isAllDayEvent,
+  layoutMonthWeek,
   type MonthGridDay,
-  monthVisibleCount,
+  type MonthGridWeek,
   rangeBandKind,
   type WeekdayFormat,
   type WeekStartsOn,
@@ -360,6 +361,28 @@ interface MonthViewInternalProps<T = unknown> extends MonthViewProps<T> {
   eventsByDay?: ReadonlyMap<string, CalendarEvent<T>[]>;
 }
 
+// The distinct events touching a week row, in the per-day index's sorted order.
+// A multi-day event lives in each covered day's bucket, so dedupe by reference;
+// this scans only the row's days, not every event in the month.
+function collectRowEvents<T>(
+  week: MonthGridWeek,
+  eventsByDay: ReadonlyMap<string, CalendarEvent<T>[]>,
+): CalendarEvent<T>[] {
+  const seen = new Set<CalendarEvent<T>>();
+  const out: CalendarEvent<T>[] = [];
+  for (const day of week.days) {
+    const list = eventsByDay.get(startOfDay(day.date).toISOString());
+    if (!list) continue;
+    for (const event of list) {
+      if (!seen.has(event)) {
+        seen.add(event);
+        out.push(event);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * A single static month grid, rendered with plain DOM elements.
  *
@@ -610,281 +633,346 @@ export function MonthView<T = unknown>({
         onKeyDown={dayRoving ? onKeyDown : undefined}
         {...slot("grid")}
       >
-        {weeks.map((week) => (
-          <div
-            key={week.id}
-            role="row"
-            {...slot("week", {
-              base: { display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" },
-            })}
-          >
-            {week.days.map((day) => {
-              const hidden = !showAdjacentMonths && !day.isCurrentMonth;
-              const cellHeight = eventsMode ? eventRowHeight : theme.cellHeight;
-              if (hidden) {
-                return (
-                  <div key={day.id} role="gridcell" aria-hidden style={{ height: cellHeight }} />
+        {weeks.map((week) => {
+          // Lay the row's events out as continuous spanning bars: a multi-day event
+          // becomes one bar across its columns (not a chip per day), stacked into
+          // lanes. Show every lane that fits; when they overflow keep the last row
+          // for "+more". The bars render in an overlay so they can span cells; the
+          // cells reserve the lane rows so "+more" sits below them.
+          const rowEvents = eventsMode ? collectRowEvents(week, eventsByDay) : [];
+          const rowLayout = layoutMonthWeek(
+            week.days.map((d) => d.date),
+            rowEvents,
+          );
+          // When lanes overflow, keep the last row for "+more" but always show at
+          // least one bar, so a day never collapses to only the overflow row.
+          const overflowing = rowLayout.laneCount > maxVisibleEventCount;
+          const visibleLanes = overflowing
+            ? Math.max(maxVisibleEventCount - 1, 1)
+            : rowLayout.laneCount;
+          return (
+            <div
+              key={week.id}
+              role="row"
+              {...slot("week", {
+                base: {
+                  position: "relative",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                },
+              })}
+            >
+              {week.days.map((day, dayCol) => {
+                const hidden = !showAdjacentMonths && !day.isCurrentMonth;
+                const cellHeight = eventsMode ? eventRowHeight : theme.cellHeight;
+                if (hidden) {
+                  return (
+                    <div key={day.id} role="gridcell" aria-hidden style={{ height: cellHeight }} />
+                  );
+                }
+                const band = rangeBandDefault(day, theme, fillCellOnSelection);
+                const label = format(
+                  day.date,
+                  "EEEE, d MMMM yyyy",
+                  locale ? { locale } : undefined,
                 );
-              }
-              const band = rangeBandDefault(day, theme, fillCellOnSelection);
-              const label = format(day.date, "EEEE, d MMMM yyyy", locale ? { locale } : undefined);
-              const dayTime = startOfDay(day.date).getTime();
-              const inCreate =
-                creating != null &&
-                dayTime >= Math.min(creating.anchor, creating.hover) &&
-                dayTime <= Math.max(creating.anchor, creating.hover);
-              // Present/absent data-* attributes so consumers can style day state
-              // with CSS/Tailwind variants (e.g. `data-[today]:bg-blue-500`).
-              const dayData = dataState({
-                "data-today": day.isToday,
-                "data-selected": day.isSelected,
-                "data-range": day.isInRange,
-                "data-weekend": day.isWeekend,
-                "data-outside": !day.isCurrentMonth,
-                "data-disabled": day.isDisabled,
-                "data-creating": inCreate,
-              });
-
-              if (eventsMode) {
-                const dayEvents = eventsByDay.get(startOfDay(day.date).toISOString()) ?? [];
-                // Core decides how many fit; withMore keeps >=1 chip so an
-                // overflowing day never shows only the "+N more" row.
-                const visible = monthVisibleCount(dayEvents.length, {
-                  full: maxVisibleEventCount,
-                  withMore: Math.max(maxVisibleEventCount - 1, 1),
+                const dayTime = startOfDay(day.date).getTime();
+                const inCreate =
+                  creating != null &&
+                  dayTime >= Math.min(creating.anchor, creating.hover) &&
+                  dayTime <= Math.max(creating.anchor, creating.hover);
+                // Present/absent data-* attributes so consumers can style day state
+                // with CSS/Tailwind variants (e.g. `data-[today]:bg-blue-500`).
+                const dayData = dataState({
+                  "data-today": day.isToday,
+                  "data-selected": day.isSelected,
+                  "data-range": day.isInRange,
+                  "data-weekend": day.isWeekend,
+                  "data-outside": !day.isCurrentMonth,
+                  "data-disabled": day.isDisabled,
+                  "data-creating": inCreate,
                 });
-                const shown = dayEvents.slice(0, visible);
-                const rest = dayEvents.slice(visible);
-                const overflow = rest.length > 0;
-                const dayLabel = format(day.date, "d MMMM", locale ? { locale } : undefined);
-                const dayCellProps = slot("day", eventCellDefault(day, theme, cellHeight));
+
+                if (eventsMode) {
+                  const dayEvents = eventsByDay.get(startOfDay(day.date).toISOString()) ?? [];
+                  // Events past the visible lanes (this day's segments in a lane the
+                  // row doesn't show) collapse into "+N more"; the popover lists the
+                  // whole day.
+                  const hiddenEvents = rowLayout.segments
+                    .filter(
+                      (s) => s.startCol <= dayCol && s.endCol >= dayCol && s.lane >= visibleLanes,
+                    )
+                    .map((s) => s.event);
+                  const dayLabel = format(day.date, "d MMMM", locale ? { locale } : undefined);
+                  const dayCellProps = slot("day", eventCellDefault(day, theme, cellHeight));
+                  return (
+                    // Events mode: by default the cell is not a tab stop, so keyboard
+                    // focus moves through the event chips (real buttons) only, not
+                    // every empty day. With keyboardDayNavigation the cell joins the
+                    // roving tab order (arrow keys + Enter to open the day). A pointer
+                    // click always drills into the day.
+                    <div
+                      key={day.id}
+                      role="gridcell"
+                      data-day={day.id}
+                      {...dayData}
+                      tabIndex={keyboardDayNavigation ? (day.id === focusKey ? 0 : -1) : undefined}
+                      aria-disabled={day.isDisabled || undefined}
+                      aria-label={label}
+                      {...dayCellProps}
+                      // Drag-to-create disables touch scroll on the cell so a swipe
+                      // sketches a span instead of scrolling the grid.
+                      style={
+                        onCreateEvent
+                          ? { ...dayCellProps.style, touchAction: "none" }
+                          : dayCellProps.style
+                      }
+                      onPointerDown={
+                        onCreateEvent && !day.isDisabled
+                          ? (e) => {
+                              if (e.button === 0) beginCreate(day.date);
+                            }
+                          : undefined
+                      }
+                      onPointerEnter={onCreateEvent ? () => extendCreate(day.date) : undefined}
+                      onClick={
+                        day.isDisabled
+                          ? undefined
+                          : () => {
+                              if (suppressClickRef.current) {
+                                suppressClickRef.current = false;
+                                return;
+                              }
+                              onPressDay?.(day.date);
+                            }
+                      }
+                      onKeyDown={
+                        keyboardDayNavigation && !day.isDisabled
+                          ? (e) => {
+                              // Let Enter/Space on a focused chip activate the chip.
+                              if (e.target !== e.currentTarget) return;
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onPressDay?.(day.date);
+                              }
+                            }
+                          : undefined
+                      }
+                    >
+                      {band ? <span data-band aria-hidden {...slot("rangeBand", band)} /> : null}
+                      <span {...dayData} {...slot("dayBadge", compactBadgeDefault(day, theme))}>
+                        {day.label}
+                      </span>
+                      <div
+                        {...slot("events", {
+                          base: { display: "flex", flexDirection: "column", gap: CHIP_GAP },
+                        })}
+                      >
+                        {/* Reserve one row per visible lane so the overlay bars have
+                          space and "+more" sits below them; the bars themselves
+                          render in the row overlay (they span cells). */}
+                        {Array.from({ length: visibleLanes }, (_, i) => (
+                          <div key={`lane-${i}`} aria-hidden style={{ height: CHIP_HEIGHT }} />
+                        ))}
+                        {hiddenEvents.length > 0 ? (
+                          <button
+                            type="button"
+                            // In built-in-popover mode, keep the document
+                            // pointerdown dismiss from firing before this click's
+                            // toggle, so pressing the button again closes it.
+                            onPointerDown={onPressMore ? undefined : (e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onPressMore) onPressMore(hiddenEvents, day.date);
+                              else {
+                                moreTriggerRef.current = e.currentTarget;
+                                setMoreOpenFor((open) => (open === day.id ? null : day.id));
+                              }
+                            }}
+                            {...slot("more", moreButtonDefault(theme))}
+                            aria-label={`${hiddenEvents.length} more events, ${dayLabel}`}
+                            aria-expanded={onPressMore ? undefined : moreOpenFor === day.id}
+                          >
+                            {moreLabel.replace("{moreCount}", String(hiddenEvents.length))}
+                          </button>
+                        ) : null}
+                        {moreOpenFor === day.id ? (
+                          <div
+                            ref={morePopoverRef}
+                            // A non-modal dialog: Tab stays inside and Escape closes,
+                            // but the page behind is not inert (outside clicks work),
+                            // so no aria-modal claim.
+                            role="dialog"
+                            aria-label={dayLabel}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            // Contain Tab inside the dialog; Escape (handled on the
+                            // document) closes it and restores focus to the trigger.
+                            onKeyDown={(e) => {
+                              if (e.key !== "Tab") return;
+                              const buttons =
+                                morePopoverRef.current?.querySelectorAll<HTMLElement>("button");
+                              if (!buttons?.length) return;
+                              const first = buttons[0];
+                              const last = buttons[buttons.length - 1];
+                              if (e.shiftKey && document.activeElement === first) {
+                                e.preventDefault();
+                                last.focus();
+                              } else if (!e.shiftKey && document.activeElement === last) {
+                                e.preventDefault();
+                                first.focus();
+                              }
+                            }}
+                            {...slot("morePopover", {
+                              base: {
+                                position: "absolute",
+                                top: 2,
+                                left: 2,
+                                right: 2,
+                                zIndex: 10,
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 2,
+                                maxHeight: 240,
+                                overflowY: "auto",
+                              },
+                              themed: {
+                                background: theme.surface,
+                                border: `1px solid ${theme.gridLine}`,
+                                borderRadius: 8,
+                                padding: 6,
+                                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                              },
+                            })}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 600, color: theme.textMuted }}>
+                              {dayLabel}
+                            </div>
+                            {dayEvents.map((event, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => {
+                                  setMoreOpenFor(null);
+                                  onPressEvent?.(event);
+                                }}
+                                style={{
+                                  display: "block",
+                                  width: "100%",
+                                  border: "none",
+                                  background: "transparent",
+                                  padding: 0,
+                                  font: "inherit",
+                                  textAlign: "left",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {Chip ? (
+                                  <Chip event={event} onPress={() => onPressEvent?.(event)} />
+                                ) : (
+                                  <span {...slot("chip", chipDefault(theme))}>{event.title}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
-                  // Events mode: by default the cell is not a tab stop, so keyboard
-                  // focus moves through the event chips (real buttons) only, not
-                  // every empty day. With keyboardDayNavigation the cell joins the
-                  // roving tab order (arrow keys + Enter to open the day). A pointer
-                  // click always drills into the day.
-                  <div
+                  <button
                     key={day.id}
+                    type="button"
                     role="gridcell"
                     data-day={day.id}
                     {...dayData}
-                    tabIndex={keyboardDayNavigation ? (day.id === focusKey ? 0 : -1) : undefined}
+                    tabIndex={day.id === focusKey ? 0 : -1}
                     aria-disabled={day.isDisabled || undefined}
                     aria-label={label}
-                    {...dayCellProps}
-                    // Drag-to-create disables touch scroll on the cell so a swipe
-                    // sketches a span instead of scrolling the grid.
-                    style={
-                      onCreateEvent
-                        ? { ...dayCellProps.style, touchAction: "none" }
-                        : dayCellProps.style
-                    }
-                    onPointerDown={
-                      onCreateEvent && !day.isDisabled
-                        ? (e) => {
-                            if (e.button === 0) beginCreate(day.date);
-                          }
-                        : undefined
-                    }
-                    onPointerEnter={onCreateEvent ? () => extendCreate(day.date) : undefined}
-                    onClick={
-                      day.isDisabled
-                        ? undefined
-                        : () => {
-                            if (suppressClickRef.current) {
-                              suppressClickRef.current = false;
-                              return;
-                            }
-                            onPressDay?.(day.date);
-                          }
-                    }
-                    onKeyDown={
-                      keyboardDayNavigation && !day.isDisabled
-                        ? (e) => {
-                            // Let Enter/Space on a focused chip activate the chip.
-                            if (e.target !== e.currentTarget) return;
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              onPressDay?.(day.date);
-                            }
-                          }
-                        : undefined
-                    }
+                    aria-pressed={day.isSelected || day.isInRange}
+                    {...slot("day", dayCellDefault(day, theme))}
+                    onClick={day.isDisabled ? undefined : () => onPressDay?.(day.date)}
+                    onMouseEnter={day.isDisabled ? undefined : () => setHoveredKey(day.id)}
+                    onMouseLeave={() => setHoveredKey((k) => (k === day.id ? null : k))}
                   >
                     {band ? <span data-band aria-hidden {...slot("rangeBand", band)} /> : null}
-                    <span {...dayData} {...slot("dayBadge", compactBadgeDefault(day, theme))}>
+                    <span
+                      {...dayData}
+                      {...slot("dayBadge", badgeDefault(day, theme, hoveredKey === day.id))}
+                    >
                       {day.label}
                     </span>
-                    <div
-                      {...slot("events", {
-                        base: { display: "flex", flexDirection: "column", gap: CHIP_GAP },
-                      })}
-                    >
-                      {shown.map((event) => {
-                        const onPress = () => onPressEvent?.(event);
-                        return (
-                          <button
-                            key={`${event.start.toISOString()}:${event.title}`}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPress();
-                            }}
-                            {...slot("chipButton", chipButtonDefault)}
-                            title={event.title}
-                            aria-label={
-                              eventAccessibilityLabel
-                                ? eventAccessibilityLabel(event, {
-                                    mode: "month",
-                                    isAllDay: isAllDayEvent(event),
-                                    ampm: false,
-                                  })
-                                : `${event.title}, ${dayLabel}`
-                            }
-                          >
-                            {Chip ? (
-                              <Chip event={event} onPress={onPress} />
-                            ) : (
-                              <span {...slot("chip", chipDefault(theme))}>{event.title}</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                      {overflow ? (
+                  </button>
+                );
+              })}
+              {eventsMode
+                ? rowLayout.segments
+                    .filter((s) => s.lane < visibleLanes)
+                    .map((seg) => {
+                      const chipButton = slot("chipButton", chipButtonDefault);
+                      const chip = slot("chip", chipDefault(theme));
+                      const onPress = () => onPressEvent?.(seg.event);
+                      return (
                         <button
+                          key={`bar-${seg.event.start.toISOString()}:${seg.event.title}:${seg.lane}`}
                           type="button"
-                          // In built-in-popover mode, keep the document
-                          // pointerdown dismiss from firing before this click's
-                          // toggle, so pressing the button again closes it.
-                          onPointerDown={onPressMore ? undefined : (e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (onPressMore) onPressMore(rest, day.date);
-                            else {
-                              moreTriggerRef.current = e.currentTarget;
-                              setMoreOpenFor((open) => (open === day.id ? null : day.id));
-                            }
+                            onPress();
                           }}
-                          {...slot("more", moreButtonDefault(theme))}
-                          aria-label={`${rest.length} more events, ${dayLabel}`}
-                          aria-expanded={onPressMore ? undefined : moreOpenFor === day.id}
-                        >
-                          {moreLabel.replace("{moreCount}", String(rest.length))}
-                        </button>
-                      ) : null}
-                      {moreOpenFor === day.id ? (
-                        <div
-                          ref={morePopoverRef}
-                          // A non-modal dialog: Tab stays inside and Escape closes,
-                          // but the page behind is not inert (outside clicks work),
-                          // so no aria-modal claim.
-                          role="dialog"
-                          aria-label={dayLabel}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          // Contain Tab inside the dialog; Escape (handled on the
-                          // document) closes it and restores focus to the trigger.
-                          onKeyDown={(e) => {
-                            if (e.key !== "Tab") return;
-                            const buttons =
-                              morePopoverRef.current?.querySelectorAll<HTMLElement>("button");
-                            if (!buttons?.length) return;
-                            const first = buttons[0];
-                            const last = buttons[buttons.length - 1];
-                            if (e.shiftKey && document.activeElement === first) {
-                              e.preventDefault();
-                              last.focus();
-                            } else if (!e.shiftKey && document.activeElement === last) {
-                              e.preventDefault();
-                              first.focus();
-                            }
+                          {...chipButton}
+                          title={seg.event.title}
+                          aria-label={
+                            eventAccessibilityLabel
+                              ? eventAccessibilityLabel(seg.event, {
+                                  mode: "month",
+                                  isAllDay: isAllDayEvent(seg.event),
+                                  ampm: false,
+                                })
+                              : `${seg.event.title}, ${format(
+                                  week.days[seg.startCol].date,
+                                  "d MMMM",
+                                  locale ? { locale } : undefined,
+                                )}`
+                          }
+                          style={{
+                            ...chipButton.style,
+                            position: "absolute",
+                            left: `calc(${(seg.startCol / 7) * 100}% + 2px)`,
+                            width: `calc(${((seg.endCol - seg.startCol + 1) / 7) * 100}% - 4px)`,
+                            top:
+                              CELL_PAD + DATE_ROW + CHIP_GAP + seg.lane * (CHIP_HEIGHT + CHIP_GAP),
+                            height: CHIP_HEIGHT,
+                            pointerEvents: "auto",
+                            zIndex: 2,
                           }}
-                          {...slot("morePopover", {
-                            base: {
-                              position: "absolute",
-                              top: 2,
-                              left: 2,
-                              right: 2,
-                              zIndex: 10,
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 2,
-                              maxHeight: 240,
-                              overflowY: "auto",
-                            },
-                            themed: {
-                              background: theme.surface,
-                              border: `1px solid ${theme.gridLine}`,
-                              borderRadius: 8,
-                              padding: 6,
-                              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-                            },
-                          })}
                         >
-                          <div style={{ fontSize: 11, fontWeight: 600, color: theme.textMuted }}>
-                            {dayLabel}
-                          </div>
-                          {dayEvents.map((event, i) => (
-                            <button
-                              key={i}
-                              type="button"
-                              onClick={() => {
-                                setMoreOpenFor(null);
-                                onPressEvent?.(event);
-                              }}
+                          {Chip ? (
+                            <Chip event={seg.event} onPress={onPress} />
+                          ) : (
+                            <span
+                              {...chip}
                               style={{
-                                display: "block",
-                                width: "100%",
-                                border: "none",
-                                background: "transparent",
-                                padding: 0,
-                                font: "inherit",
-                                textAlign: "left",
-                                cursor: "pointer",
+                                ...chip.style,
+                                ...(seg.continuesBefore
+                                  ? { borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }
+                                  : null),
+                                ...(seg.continuesAfter
+                                  ? { borderTopRightRadius: 0, borderBottomRightRadius: 0 }
+                                  : null),
                               }}
                             >
-                              {Chip ? (
-                                <Chip event={event} onPress={() => onPressEvent?.(event)} />
-                              ) : (
-                                <span {...slot("chip", chipDefault(theme))}>{event.title}</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <button
-                  key={day.id}
-                  type="button"
-                  role="gridcell"
-                  data-day={day.id}
-                  {...dayData}
-                  tabIndex={day.id === focusKey ? 0 : -1}
-                  aria-disabled={day.isDisabled || undefined}
-                  aria-label={label}
-                  aria-pressed={day.isSelected || day.isInRange}
-                  {...slot("day", dayCellDefault(day, theme))}
-                  onClick={day.isDisabled ? undefined : () => onPressDay?.(day.date)}
-                  onMouseEnter={day.isDisabled ? undefined : () => setHoveredKey(day.id)}
-                  onMouseLeave={() => setHoveredKey((k) => (k === day.id ? null : k))}
-                >
-                  {band ? <span data-band aria-hidden {...slot("rangeBand", band)} /> : null}
-                  <span
-                    {...dayData}
-                    {...slot("dayBadge", badgeDefault(day, theme, hoveredKey === day.id))}
-                  >
-                    {day.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
+                              {seg.event.title}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })
+                : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
