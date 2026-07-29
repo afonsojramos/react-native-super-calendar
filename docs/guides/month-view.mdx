@@ -9,7 +9,10 @@ description: The month grid, event chip fitting, overflow, and month paging.
 </Note>
 
 `mode="month"` renders the classic month grid: a swipeable pager of 4–6 week
-rows, with each day cell showing its event chips.
+rows. A single-day event shows as a chip in its day cell; an event that covers
+several days draws as one continuous bar spanning the columns it touches, so a
+trip or holiday reads as a single block instead of a chip repeated on each day. A
+bar that runs past a week's edge is squared off and continues on the next row.
 
 ```tsx
 <Calendar
@@ -26,8 +29,9 @@ rows, with each day cell showing its event chips.
 
 ## Event chips and overflow
 
-Each day cell shows as many chips as its height allows and collapses the rest
-into a `+N more` label.
+Each week row stacks its events into lanes (a multi-day bar keeps its lane across
+the days it spans) and shows as many lanes as the cell height allows, collapsing
+the rest of a day's events into a `+N more` label.
 
 ```tsx
 <Calendar mode="month" /* ... */ />                            // auto-fit (default)

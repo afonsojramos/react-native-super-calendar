@@ -521,9 +521,12 @@ events you pass (no time grid).
 
 ### Month view
 
-Each day cell shows as many event chips as its height allows and collapses the
-rest into a `+N more` label (tap it via `onPressMore`). The fit is measured at
-runtime, so taller grids (fewer week rows, larger screens) show more.
+A single-day event shows as a chip in its day; a multi-day event draws as one
+continuous bar spanning the days it covers (squared off and continued on the next
+row when it crosses a week edge), so a trip reads as a single block. Each week row
+stacks events into lanes and shows as many as the cell height allows, collapsing
+the rest of a day into a `+N more` label (tap it via `onPressMore`). The fit is
+measured at runtime, so taller grids (fewer week rows, larger screens) show more.
 
 ```tsx
 <Calendar mode="month" /* ... */ />          // auto-fit (default)
@@ -574,8 +577,8 @@ paging follows the system scroll direction — so enable React Native's
   under the touch — handy for "create event". (Event taps still go to `onPressEvent`.)
 - **Long-press** mirrors every tap: `onLongPressEvent(event)`, `onLongPressCell(date)`
   (week/day), and `onLongPressDay(date)` (month). All optional.
-- **All-day events** render in a lane above the time grid (and as chips in month
-  cells), excluded from the timed columns. Mark an event `allDay: true`, or it's
+- **All-day events** render in a lane above the time grid (and as chips or
+  spanning bars in month cells), excluded from the timed columns. Mark an event `allDay: true`, or it's
   inferred when it spans whole days (midnight-to-midnight). `renderEvent` receives
   `isAllDay` so you can style the chip. The lane is hidden when there are none.
 - `freeSwipe` (default `false`) controls paging: by default one day/week/month

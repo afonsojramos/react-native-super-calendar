@@ -91,6 +91,12 @@ Each `day` in `weeks[].days` carries:
   weekStartsOn)` returns the raw `Date[][]`.
 </Tip>
 
+`layoutMonthWeek(days, events)` lays one week row's events out as spanning bars:
+each event becomes a single segment carrying the `startCol` / `endCol` it covers,
+a `lane` for stacking overlapping events, and `continuesBefore` / `continuesAfter`
+flags for bars that run past the row's edges. It's the same layout the built-in
+month grid uses, so a custom month cell can draw identical multi-day bars.
+
 ## Laying out timed events
 
 `layoutDayEvents(events, day)` resolves overlaps into side-by-side columns for a
