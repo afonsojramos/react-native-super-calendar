@@ -34,6 +34,35 @@ describe("dom ResourceTimeline", () => {
     expect(getByText("Room B")).toBeTruthy();
   });
 
+  it("renders a custom resource header, receiving the resource and index", () => {
+    const { getByText, queryByText } = render(
+      <ResourceTimeline
+        date={date}
+        resources={resources}
+        events={events}
+        renderResourceHeader={(resource, index) => <span>{`${index}:${resource.title}`}</span>}
+      />,
+    );
+    expect(getByText("0:Room A")).toBeTruthy();
+    expect(getByText("1:Room B")).toBeTruthy();
+    // The default label is replaced, not appended.
+    expect(queryByText("Room A")).toBeNull();
+  });
+
+  it("uses the custom resource header in the vertical orientation too", () => {
+    const { getByText } = render(
+      <ResourceTimeline
+        date={date}
+        resources={resources}
+        events={events}
+        orientation="vertical"
+        renderResourceHeader={(resource) => <span>{`H:${resource.id}`}</span>}
+      />,
+    );
+    expect(getByText("H:a")).toBeTruthy();
+    expect(getByText("H:b")).toBeTruthy();
+  });
+
   it("places each event in its resource's row", () => {
     const { container } = render(
       <ResourceTimeline date={date} resources={resources} events={events} hourWidth={80} />,

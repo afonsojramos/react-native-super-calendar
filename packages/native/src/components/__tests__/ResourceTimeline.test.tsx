@@ -35,6 +35,35 @@ describe("ResourceTimeline", () => {
     expect(getByText("solo")).toBeTruthy();
   });
 
+  it("renders a custom resource header, receiving the resource and index", () => {
+    const { getByText, queryByText } = render(
+      <ResourceTimeline
+        date={at(0)}
+        resources={resources}
+        events={events}
+        renderResourceHeader={(resource, index) => <Text>{`${index}:${resource.title}`}</Text>}
+      />,
+    );
+    expect(getByText("0:Room A")).toBeTruthy();
+    expect(getByText("1:Room B")).toBeTruthy();
+    // The default label is replaced, not appended.
+    expect(queryByText("Room A")).toBeNull();
+  });
+
+  it("uses the custom resource header in the vertical orientation too", () => {
+    const { getByText } = render(
+      <ResourceTimeline
+        date={at(0)}
+        resources={resources}
+        events={events}
+        orientation="vertical"
+        renderResourceHeader={(resource) => <Text>{`H:${resource.id}`}</Text>}
+      />,
+    );
+    expect(getByText("H:a")).toBeTruthy();
+    expect(getByText("H:b")).toBeTruthy();
+  });
+
   it("fires onPressEvent with the tapped event", () => {
     const onPressEvent = jest.fn();
     const { getByText } = render(

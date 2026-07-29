@@ -141,6 +141,14 @@ export interface ResourceTimelineProps<T = unknown> extends SlotStyleProps<Resou
    * band stays non-interactive and hidden from assistive tech.
    */
   renderBusinessHours?: (band: BusinessHoursBand & { resource: Resource }) => ReactNode;
+  /**
+   * Render each resource's header cell yourself (an avatar, a subtitle, a status
+   * dot). Receives the resource and its index; return the cell's content. The board
+   * keeps the header cell's sizing so columns stay aligned, so this replaces only
+   * the label content. Falls back to the resource title (or id). Applies to both
+   * orientations: the top header cells when vertical, the row labels when horizontal.
+   */
+  renderResourceHeader?: (resource: Resource, index: number) => ReactNode;
   /** Snap dragged events to this many minutes (default 15). */
   dragStepMinutes?: number;
   /** Show the current-time line when `date` is today (default true). */
@@ -261,6 +269,7 @@ export function ResourceTimeline<T = unknown>({
   onCreateEvent,
   businessHours,
   renderBusinessHours,
+  renderResourceHeader,
   dragStepMinutes = 15,
   showNowIndicator = true,
   now: nowProp,
@@ -573,7 +582,7 @@ export function ResourceTimeline<T = unknown>({
           })}
         >
           <div {...slot("corner", { base: { width: GUTTER_WIDTH, flex: "none" } })} />
-          {resources.map((resource) => (
+          {resources.map((resource, index) => (
             <div
               key={resource.id}
               {...slot("resourceLabel", {
@@ -594,7 +603,9 @@ export function ResourceTimeline<T = unknown>({
                 },
               })}
             >
-              {resource.title ?? resource.id}
+              {renderResourceHeader
+                ? renderResourceHeader(resource, index)
+                : (resource.title ?? resource.id)}
             </div>
           ))}
         </div>
@@ -861,7 +872,7 @@ export function ResourceTimeline<T = unknown>({
         </div>
 
         {/* Resource rows */}
-        {resources.map((resource) => {
+        {resources.map((resource, index) => {
           const positioned = byResource.get(resource.id) ?? [];
           return (
             <div
@@ -892,7 +903,9 @@ export function ResourceTimeline<T = unknown>({
                   },
                 })}
               >
-                {resource.title ?? resource.id}
+                {renderResourceHeader
+                  ? renderResourceHeader(resource, index)
+                  : (resource.title ?? resource.id)}
               </div>
               <div
                 data-resource-id={resource.id}

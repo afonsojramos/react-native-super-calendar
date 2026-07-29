@@ -223,12 +223,32 @@ assistive tech, so return visuals, not buttons or announced text:
 />
 ```
 
+## Custom resource headers
+
+By default each resource header shows its `title` (falling back to the `id`). To
+render it yourself, an avatar, a subtitle, a status dot, a capacity count, pass
+`renderResourceHeader`. It receives the resource and its index and returns the
+cell's content; the board keeps the header cell's sizing so the columns stay
+aligned with the lanes below. It applies to both orientations: the top header
+cells when `orientation="vertical"`, the left row labels when horizontal.
+
+```tsx
+<ResourceTimeline
+  date={date}
+  resources={resources}
+  events={events}
+  renderResourceHeader={(resource) => (
+    <ResourceLabel name={resource.title} avatar={resource.avatarUrl} />
+  )}
+/>
+```
+
 ## React Native
 
 The native renderer exposes the same board and props (`date`, `resources`, `events`,
 `orientation`, `resourceId`, `resourcesPerPage`, `resourcePage`, `startHour`/`endHour`, `hourWidth`, `hourHeight`, `rowHeight`, `labelWidth`, `ampm`,
 `renderEvent`, `onPressEvent`, `onPressCell`, `onCreateEvent`, `businessHours`,
-`renderBusinessHours`), plus
+`renderBusinessHours`, `renderResourceHeader`), plus
 `onDragEvent` / `dragStepMinutes` for **long-press drag-to-move, cross-lane drag, and edge-resize**
 and the long-press variants `onLongPressEvent` / `onLongPressCell`. It reads the theme from context, so
 restyle via `theme.containers` (see [Theming](/guides/theming)):
