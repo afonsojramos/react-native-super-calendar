@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.8.0](https://github.com/afonsojramos/super-calendar/compare/v2.7.0...v2.8.0) (2026-07-29)
+
+
+### Features
+
+* add renderResourceHeader to customize ResourceTimeline headers ([2c1aab2](https://github.com/afonsojramos/super-calendar/commit/2c1aab24015557772a46471c55d66f7aecb52bf4))
+* **core:** add layoutMonthWeek to lay out multi-day month event bars ([53d4602](https://github.com/afonsojramos/super-calendar/commit/53d4602aacfa598e80a4a7ba876511af0a654ad1))
+* **dom:** render multi-day month events as continuous spanning bars ([eec486b](https://github.com/afonsojramos/super-calendar/commit/eec486b0de7f2a1af77e6b1ee5d7ab7f694c5d02))
+* **native:** render multi-day month events as continuous spanning bars ([588fcaa](https://github.com/afonsojramos/super-calendar/commit/588fcaa8654c07f3b4e6fc2d09f486bfef18025b))
+* re-export layoutMonthWeek from the dom and native packages ([eaaa0ed](https://github.com/afonsojramos/super-calendar/commit/eaaa0ed44bed35b939dd5f640d2882c319962515))
+* reject overlapping drags with eventOverlap and add overlap helpers ([b52d8f9](https://github.com/afonsojramos/super-calendar/commit/b52d8f9e2677d58540a4e286acce5cd2979c8606))
+* resize an event from its top edge to change the start ([ccedda0](https://github.com/afonsojramos/super-calendar/commit/ccedda07a6d6d158ed512dbd156e29f43b52a16a))
+* split move and resize editability with startEditable and durationEditable ([3318281](https://github.com/afonsojramos/super-calendar/commit/3318281dbf0ee0c8ebc9e4d3f6fc769dc49f5508))
+
+
+### Bug Fixes
+
+* **core:** make layoutMonthWeek order-independent and drop degenerate segments ([eaef14a](https://github.com/afonsojramos/super-calendar/commit/eaef14ad1877942abe84db6a9df8d38485f482cd))
+* **dom:** render month bars as gridcell content, clip to month, memoize row layout ([a8f3cee](https://github.com/afonsojramos/super-calendar/commit/a8f3cee24ca1e353f0651310a982063aa355d78c))
+* **native:** clip month bars to the current month and memoize row layout ([445af89](https://github.com/afonsojramos/super-calendar/commit/445af89ee08339d0627d51414e6cde7f9cde0cb4))
+
 ## [2.7.0](https://github.com/afonsojramos/super-calendar/compare/v2.6.0...v2.7.0) (2026-07-27)
 
 
