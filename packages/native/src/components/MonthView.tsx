@@ -1,6 +1,7 @@
 import { format, type Locale, isSameMonth, startOfDay } from "date-fns";
 import { memo, type ReactElement, useMemo, useState } from "react";
 import {
+  type DimensionValue,
   type LayoutChangeEvent,
   Modal,
   Platform,
@@ -39,6 +40,7 @@ import {
   isWeekend,
 } from "@super-calendar/core";
 import { monthEventCapacity, monthVisibleCount } from "@super-calendar/core";
+import { layoutMonthWeek, type MonthWeekEvents } from "@super-calendar/core";
 import {
   compareDayEvents,
   groupEventsByDay,
@@ -54,11 +56,38 @@ const DATE_BADGE_HEIGHT = 24;
 const BAND_CENTER_Y = DAY_CELL_PADDING_TOP + DATE_BADGE_HEIGHT / 2;
 const CELL_ROW_GAP = 2;
 const CHIP_PADDING_V = 2;
+// Where the first event row sits below the date badge (padding + badge + gap).
+const BADGE_AREA = DAY_CELL_PADDING_TOP + DATE_BADGE_HEIGHT + CELL_ROW_GAP;
+// Horizontal inset of a chip within its cell (mirrors `styles.monthEvent`).
+const CHIP_INSET_H = 4;
 // Pre-measure fallback so the first paint isn't empty or overflowing.
 const FALLBACK_VISIBLE_COUNT = 3;
 
 const numericStyle = (value: number | string | undefined, fallback: number) =>
   typeof value === "number" ? value : fallback;
+
+// The distinct events touching a week row, in the per-day index's sorted order.
+// A multi-day event lives in each covered day's bucket, so dedupe by reference.
+function collectRowEvents<T>(
+  week: Date[],
+  eventsByDay: ReadonlyMap<string, CalendarEvent<T>[]>,
+): CalendarEvent<T>[] {
+  const seen = new Set<CalendarEvent<T>>();
+  const out: CalendarEvent<T>[] = [];
+  for (const day of week) {
+    const list = eventsByDay.get(startOfDay(day).toISOString());
+    if (!list) continue;
+    for (const event of list) {
+      if (!seen.has(event)) {
+        seen.add(event);
+        out.push(event);
+      }
+    }
+  }
+  return out;
+}
+
+const pct = (n: number): DimensionValue => `${n}%` as DimensionValue;
 
 /**
  * The styleable parts of {@link MonthView}. Mirrors the dom renderer's slot
@@ -235,6 +264,16 @@ function MonthViewInner<T>({
     return isRTL ? days.reverse() : days;
   }, [date, weekStartsOn, isRTL, hiddenDays]);
 
+  // The built-in chip's height and per-row stride, from the theme's title type.
+  // Shared by the capacity estimate and the spanning-bar overlay so the bars line
+  // up exactly with the rows the cells reserve for them.
+  const chipMetrics = useMemo(() => {
+    const fontSize = numericStyle(theme.text.eventTitle.fontSize, 12);
+    const lineHeight = numericStyle(theme.text.eventTitle.lineHeight, Math.ceil(fontSize * 1.3));
+    const chipHeight = lineHeight + CHIP_PADDING_V * 2;
+    return { chipHeight, chipRowHeight: chipHeight + CELL_ROW_GAP };
+  }, [theme]);
+
   // How many chips fit per cell: a fixed cap when `maxVisibleEventCount` is set,
   // else derived from the measured cell height and the (default) chip metrics.
   const capacity = useMemo(() => {
@@ -245,14 +284,11 @@ function MonthViewInner<T>({
       return { full: FALLBACK_VISIBLE_COUNT, withMore: FALLBACK_VISIBLE_COUNT };
     }
     const rowHeight = gridHeight / weeks.length;
-    const fontSize = numericStyle(theme.text.eventTitle.fontSize, 12);
-    const lineHeight = numericStyle(theme.text.eventTitle.lineHeight, Math.ceil(fontSize * 1.3));
-    const chipRowHeight = lineHeight + CHIP_PADDING_V * 2 + CELL_ROW_GAP;
     const moreFontSize = numericStyle(theme.text.more.fontSize, 11);
     const moreRowHeight = Math.ceil(moreFontSize * 1.3) + CELL_ROW_GAP;
     const available = rowHeight - DAY_CELL_PADDING_TOP - DATE_BADGE_HEIGHT;
-    return monthEventCapacity(available, chipRowHeight, moreRowHeight);
-  }, [maxVisibleEventCount, gridHeight, weeks.length, theme]);
+    return monthEventCapacity(available, chipMetrics.chipRowHeight, moreRowHeight);
+  }, [maxVisibleEventCount, gridHeight, weeks.length, theme, chipMetrics]);
 
   // Group events by calendar day once per `events` change (shared with the dom
   // renderer via core's `groupEventsByDay`), rather than scanning the whole list
@@ -272,7 +308,12 @@ function MonthViewInner<T>({
   // picker reads cleaner without it (matching the dom renderer).
   const showGrid = events.length > 0;
 
-  const renderDay = (day: Date) => {
+  const renderDay = (
+    day: Date,
+    dayCol: number,
+    rowLayout: MonthWeekEvents<T>,
+    visibleLanes: number,
+  ) => {
     const isCurrentMonth = isSameMonth(day, date);
 
     // Blank out adjacent-month days when they're hidden, keeping the grid shape.
@@ -308,8 +349,12 @@ function MonthViewInner<T>({
       { selectedDates, selectedRange },
       { minDate, maxDate, isDateDisabled },
     );
-    const visibleCount = monthVisibleCount(dayEvents.length, capacity);
-    const hiddenCount = dayEvents.length - visibleCount;
+    // Events past the visible lanes (this day's segments the row can't show)
+    // collapse into "+N more"; the popover still lists the whole day.
+    const hiddenEvents = rowLayout.segments
+      .filter((s) => s.startCol <= dayCol && s.endCol >= dayCol && s.lane >= visibleLanes)
+      .map((s) => s.event);
+    const hiddenCount = hiddenEvents.length;
 
     // The range shows as a band behind the days; endpoints and discrete selected
     // days get a filled badge on top. Today's badge wins when it coincides. The
@@ -476,23 +521,14 @@ function MonthViewInner<T>({
             </Text>
           </View>
         )}
-        {dayEvents.slice(0, visibleCount).map((event, index) => (
+        {/* Reserve one row per visible lane so the overlay bars have space and
+            "+more" sits below them; the bars themselves render in the row overlay
+            (they span cells). */}
+        {Array.from({ length: visibleLanes }, (_, i) => (
           <View
-            key={keyExtractor(event, index)}
-            style={[styles.monthEvent, theme.containers.monthEvent]}
-          >
-            <RenderEventComponent
-              event={event}
-              mode="month"
-              isAllDay={isAllDayEvent(event)}
-              onPress={disableMonthEventCellPress ? () => {} : () => onPressEvent(event)}
-              onLongPress={
-                disableMonthEventCellPress || !onLongPressEvent
-                  ? undefined
-                  : () => onLongPressEvent(event)
-              }
-            />
-          </View>
+            key={`lane-${i}`}
+            style={{ height: chipMetrics.chipHeight, pointerEvents: "none" }}
+          />
         ))}
         {hiddenCount > 0 ? (
           <Text
@@ -600,14 +636,59 @@ function MonthViewInner<T>({
         </Modal>
       ) : null}
       <View {...slot("grid", { base: styles.container })} onLayout={handleLayout}>
-        {weeks.map((week) => (
-          <View
-            {...slot("week", { base: styles.weekRow, themed: theme.containers.weekRow })}
-            key={week[0].toISOString()}
-          >
-            {week.map((day) => renderDay(day))}
-          </View>
-        ))}
+        {weeks.map((week) => {
+          // Lay this row's events out as continuous spanning bars: a multi-day
+          // event becomes one bar across its columns (not a chip per day), stacked
+          // into lanes. Cells reserve the lane rows; the bars render in an overlay
+          // so they can span cells. `visibleLanes` mirrors the per-day cap.
+          const rowLayout = showGrid
+            ? layoutMonthWeek(week, collectRowEvents(week, eventsByDay))
+            : { segments: [], laneCount: 0 };
+          const visibleLanes = monthVisibleCount(rowLayout.laneCount, capacity);
+          const cols = week.length;
+          return (
+            <View
+              {...slot("week", { base: styles.weekRow, themed: theme.containers.weekRow })}
+              key={week[0].toISOString()}
+            >
+              {week.map((day, dayCol) => renderDay(day, dayCol, rowLayout, visibleLanes))}
+              {showGrid ? (
+                <View style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}>
+                  {rowLayout.segments
+                    .filter((seg) => seg.lane < visibleLanes)
+                    .map((seg) => (
+                      <View
+                        key={`bar-${seg.event.start.toISOString()}:${seg.event.title}:${seg.lane}`}
+                        style={{
+                          position: "absolute",
+                          left: pct((seg.startCol / cols) * 100),
+                          width: pct(((seg.endCol - seg.startCol + 1) / cols) * 100),
+                          top: BADGE_AREA + seg.lane * chipMetrics.chipRowHeight,
+                          height: chipMetrics.chipHeight,
+                          paddingHorizontal: CHIP_INSET_H,
+                          pointerEvents: "box-none",
+                        }}
+                      >
+                        <RenderEventComponent
+                          event={seg.event}
+                          mode="month"
+                          isAllDay={isAllDayEvent(seg.event)}
+                          onPress={
+                            disableMonthEventCellPress ? () => {} : () => onPressEvent(seg.event)
+                          }
+                          onLongPress={
+                            disableMonthEventCellPress || !onLongPressEvent
+                              ? undefined
+                              : () => onLongPressEvent(seg.event)
+                          }
+                        />
+                      </View>
+                    ))}
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
       </View>
     </View>
   );

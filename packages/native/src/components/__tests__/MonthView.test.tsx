@@ -270,3 +270,15 @@ describe("MonthView built-in more popover", () => {
     expect(queryByRole("header", { name: "Monday, 15 June 2026" })).toBeNull();
   });
 });
+
+describe("MonthView multi-day events", () => {
+  it("draws a multi-day event as one spanning bar, not a chip per day", () => {
+    const span: CalendarEvent[] = [
+      // Mon 15 -> covers 15 and 16 (end exclusive at midnight of the 17th).
+      { title: "Trip", start: new Date(2026, 5, 15), end: new Date(2026, 5, 17) },
+    ];
+    const { getAllByText } = render(<MonthView {...baseProps} events={span} />);
+    // One bar spanning two days, not a chip repeated on each day.
+    expect(getAllByText("Trip")).toHaveLength(1);
+  });
+});
