@@ -101,6 +101,8 @@ export type MonthListProps<T> = {
   moreLabel?: string;
   /** Show dimmed adjacent-month days. Default false (each month shows only its own days). */
   showAdjacentMonths?: boolean;
+  /** Tint weekend day cells with the theme's weekend background. Default true. */
+  highlightWeekends?: boolean;
   disableMonthEventCellPress?: boolean;
   isRTL?: boolean;
   activeDate?: Date;
@@ -151,6 +153,7 @@ function MonthListInner<T>({
   sortedMonthView,
   moreLabel,
   showAdjacentMonths = false,
+  highlightWeekends = true,
   disableMonthEventCellPress,
   isRTL,
   activeDate,
@@ -463,6 +466,7 @@ function MonthListInner<T>({
             sortedMonthView={sortedMonthView}
             moreLabel={moreLabel}
             showAdjacentMonths={showAdjacentMonths}
+            highlightWeekends={highlightWeekends}
             disableMonthEventCellPress={disableMonthEventCellPress}
             isRTL={isRTL}
             activeDate={activeDate}

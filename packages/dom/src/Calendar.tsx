@@ -402,6 +402,7 @@ export function Calendar<T = unknown>({
         weekStartsOn={weekStartsOn}
         hiddenDays={hiddenDays}
         weekdayFormat={weekdayFormat}
+        highlightWeekends={highlightWeekends}
         locale={locale}
         theme={theme}
         className={className}

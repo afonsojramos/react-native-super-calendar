@@ -553,6 +553,7 @@ export function Calendar<T>({
           sortedMonthView={sortedMonthView}
           moreLabel={moreLabel}
           showAdjacentMonths={showAdjacentMonths}
+          highlightWeekends={highlightWeekends}
           disableMonthEventCellPress={disableMonthEventCellPress}
           isRTL={isRTL}
           showSixWeeks={showSixWeeks}

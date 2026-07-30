@@ -37,6 +37,8 @@ export interface MonthListProps<T = unknown>
   weekStartsOn?: WeekStartsOn;
   /** Weekday header label width: `narrow` ("M"), `short` ("Mon", default), or `long` ("Monday"). */
   weekdayFormat?: WeekdayFormat;
+  /** Tint weekend day cells with the theme's weekend background (default true). */
+  highlightWeekends?: boolean;
   /** Events to render as chips in each day cell (calendar layout when provided). */
   events?: CalendarEvent<T>[];
   /** Custom chip renderer; falls back to the built-in titled chip. */
@@ -91,6 +93,7 @@ export function MonthList<T = unknown>({
   pastMonths = 1,
   futureMonths = 12,
   weekdayFormat = "short",
+  highlightWeekends = true,
   weekStartsOn = 0,
   events,
   renderEvent,
@@ -189,6 +192,7 @@ export function MonthList<T = unknown>({
           <MonthView<T>
             date={item}
             weekStartsOn={weekStartsOn}
+            highlightWeekends={highlightWeekends}
             events={events}
             eventsByDay={eventsByDay}
             renderEvent={renderEvent}

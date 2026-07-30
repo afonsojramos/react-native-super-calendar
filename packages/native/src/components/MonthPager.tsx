@@ -53,6 +53,7 @@ export type MonthPagerProps<T> = {
   sortedMonthView?: boolean;
   moreLabel?: string;
   showAdjacentMonths?: boolean;
+  highlightWeekends?: boolean;
   disableMonthEventCellPress?: boolean;
   isRTL?: boolean;
   calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
@@ -85,6 +86,7 @@ function MonthPagerInner<T>({
   sortedMonthView,
   moreLabel,
   showAdjacentMonths,
+  highlightWeekends,
   disableMonthEventCellPress,
   isRTL,
   calendarCellStyle,
@@ -250,6 +252,7 @@ function MonthPagerInner<T>({
           sortedMonthView={sortedMonthView}
           moreLabel={moreLabel}
           showAdjacentMonths={showAdjacentMonths}
+          highlightWeekends={highlightWeekends}
           disableMonthEventCellPress={disableMonthEventCellPress}
           isRTL={isRTL}
           showSixWeeks={showSixWeeks}

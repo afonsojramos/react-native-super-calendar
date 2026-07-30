@@ -239,6 +239,30 @@ describe("dom MonthView", () => {
       const bar = bars[0].closest("button");
       expect(bar?.style.width).toContain("100%");
     });
+
+    it("tints weekend cells by default and drops the tint with highlightWeekends=false", () => {
+      const weekendCells = (c: HTMLElement) =>
+        Array.from(c.querySelectorAll<HTMLElement>("[data-day][data-weekend]"));
+      const { container, rerender } = render(
+        <MonthView date={new Date(2026, 6, 1)} weekStartsOn={1} events={[]} />,
+      );
+      const cells = weekendCells(container);
+      expect(cells.length).toBeGreaterThan(0);
+      // Default: weekend cells carry the themed weekend background.
+      expect(cells.every((el) => el.style.background !== "transparent")).toBe(true);
+      rerender(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[]}
+          highlightWeekends={false}
+        />,
+      );
+      // Off: the tint is dropped (transparent), so weekends read like any other day.
+      expect(weekendCells(container).every((el) => el.style.background === "transparent")).toBe(
+        true,
+      );
+    });
   });
 
   describe("slot styling", () => {

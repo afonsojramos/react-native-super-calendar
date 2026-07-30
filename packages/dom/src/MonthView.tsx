@@ -122,6 +122,8 @@ export interface MonthViewProps<T = unknown>
   selectedDates?: Date[];
   /** Render days from the neighbouring months in the leading/trailing cells (default true). */
   showAdjacentMonths?: boolean;
+  /** Tint weekend day cells with the theme's weekend background (default true). */
+  highlightWeekends?: boolean;
   /**
    * Fill the whole cell with the range background instead of the default
    * centered rounded "pill" strip. Default false.
@@ -161,7 +163,11 @@ export interface MonthViewProps<T = unknown>
 // Each helper returns the slot's built-in styling split into `base` (structural,
 // always applied) and `themed` (colour/type/spacing, dropped when a class is set).
 
-function dayCellDefault(day: MonthGridDay, theme: DomCalendarTheme): SlotDefault {
+function dayCellDefault(
+  day: MonthGridDay,
+  theme: DomCalendarTheme,
+  highlightWeekends: boolean,
+): SlotDefault {
   return {
     base: {
       position: "relative",
@@ -177,7 +183,10 @@ function dayCellDefault(day: MonthGridDay, theme: DomCalendarTheme): SlotDefault
     },
     themed: {
       // The range band is a separate layer; the cell only carries the weekend tint.
-      background: day.isWeekend && !day.isInRange ? theme.weekendBackground : "transparent",
+      background:
+        highlightWeekends && day.isWeekend && !day.isInRange
+          ? theme.weekendBackground
+          : "transparent",
       fontSize: 15,
       color: day.isDisabled ? theme.textDisabled : theme.text,
     },
@@ -254,7 +263,12 @@ function badgeDefault(day: MonthGridDay, theme: DomCalendarTheme, hovered: boole
 
 // --- Calendar (events) layout styles -------------------------------------
 
-function eventCellDefault(day: MonthGridDay, theme: DomCalendarTheme, height: number): SlotDefault {
+function eventCellDefault(
+  day: MonthGridDay,
+  theme: DomCalendarTheme,
+  height: number,
+  highlightWeekends: boolean,
+): SlotDefault {
   return {
     base: {
       position: "relative",
@@ -272,7 +286,10 @@ function eventCellDefault(day: MonthGridDay, theme: DomCalendarTheme, height: nu
     },
     themed: {
       borderTop: `1px solid ${theme.gridLine}`,
-      background: day.isWeekend && !day.isInRange ? theme.weekendBackground : "transparent",
+      background:
+        highlightWeekends && day.isWeekend && !day.isInRange
+          ? theme.weekendBackground
+          : "transparent",
       color: day.isDisabled ? theme.textDisabled : theme.text,
     },
   };
@@ -415,6 +432,7 @@ export function MonthView<T = unknown>({
   selectedRange,
   selectedDates,
   showAdjacentMonths = true,
+  highlightWeekends = true,
   fillCellOnSelection = false,
   showTitle = true,
   showWeekdays = true,
@@ -748,7 +766,10 @@ export function MonthView<T = unknown>({
                     )
                     .map((s) => s.event);
                   const dayLabel = format(day.date, "d MMMM", locale ? { locale } : undefined);
-                  const dayCellProps = slot("day", eventCellDefault(day, theme, cellHeight));
+                  const dayCellProps = slot(
+                    "day",
+                    eventCellDefault(day, theme, cellHeight, highlightWeekends),
+                  );
                   return (
                     // Events mode: by default the cell is not a tab stop, so keyboard
                     // focus moves through the event chips (real buttons) only, not
@@ -1002,7 +1023,7 @@ export function MonthView<T = unknown>({
                     aria-disabled={day.isDisabled || undefined}
                     aria-label={label}
                     aria-pressed={day.isSelected || day.isInRange}
-                    {...slot("day", dayCellDefault(day, theme))}
+                    {...slot("day", dayCellDefault(day, theme, highlightWeekends))}
                     onClick={day.isDisabled ? undefined : () => onPressDay?.(day.date)}
                     onMouseEnter={day.isDisabled ? undefined : () => setHoveredKey(day.id)}
                     onMouseLeave={() => setHoveredKey((k) => (k === day.id ? null : k))}

@@ -80,6 +80,18 @@ describe("MonthView grid", () => {
   });
 });
 
+describe("MonthView weekend shading", () => {
+  // Sat 20 June 2026 is a weekend day in the rendered month.
+  it("tints weekend cells by default and drops the tint with highlightWeekends=false", () => {
+    const on = render(<MonthView {...baseProps} />);
+    expect(backgroundColorOf(on.getByLabelText(/Saturday, 20 June 2026/))).toBe(
+      defaultTheme.colors.weekendBackground,
+    );
+    const off = render(<MonthView {...baseProps} highlightWeekends={false} />);
+    expect(backgroundColorOf(off.getByLabelText(/Saturday, 20 June 2026/))).toBeUndefined();
+  });
+});
+
 describe("MonthView renderCustomDateForMonth", () => {
   it("replaces the default date badge with the custom renderer's output", () => {
     const { getByText, queryByText } = render(

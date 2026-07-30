@@ -136,6 +136,8 @@ export type MonthViewProps<T> = SlotStyleProps<MonthViewSlot> & {
   moreLabel?: string;
   /** Show dimmed days from adjacent months in the grid. Default true. */
   showAdjacentMonths?: boolean;
+  /** Tint weekend day cells with the theme's weekend background. Default true. */
+  highlightWeekends?: boolean;
   /** Ignore taps on month-cell events (day-cell taps still fire). Default false. */
   disableMonthEventCellPress?: boolean;
   /** Reverse the day order within each week (right-to-left). Default false. */
@@ -200,6 +202,7 @@ function MonthViewInner<T>({
   sortedMonthView = true,
   moreLabel = "{moreCount} More",
   showAdjacentMonths = true,
+  highlightWeekends = true,
   disableMonthEventCellPress = false,
   isRTL = false,
   showSixWeeks = false,
@@ -412,7 +415,7 @@ function MonthViewInner<T>({
           borderRightWidth: StyleSheet.hairlineWidth,
           borderColor: theme.colors.gridLine,
         },
-        isWeekend(day) && { backgroundColor: theme.colors.weekendBackground },
+        highlightWeekends && isWeekend(day) && { backgroundColor: theme.colors.weekendBackground },
         theme.containers.dayCell,
       ],
     });
