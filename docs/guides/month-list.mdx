@@ -62,6 +62,7 @@ an optional `renderEvent`) to show events in the grids too; it reuses
 | `isDateDisabled`       | `(date) => boolean`        | Disable specific days.                                          |
 | `onSelectDrag`         | `(start, end) => void`     | Drag-to-select; pair with `useDateRange().selectRange`.         |
 | `showAdjacentMonths`   | `boolean`                  | Show dimmed adjacent-month days. Default `false`.               |
+| `highlightWeekends`    | `boolean`                  | Tint weekend day cells. Default `true`.                         |
 | `onPressDay`           | `(date) => void`           | Tap a day cell.                                                 |
 | `onChangeVisibleMonth` | `(month) => void`          | Fires with the topmost month once it's ~60% visible.            |
 | `renderMonthHeader`    | `(month) => ReactNode`     | Replace the default `LLLL yyyy` title.                          |

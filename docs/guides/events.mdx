@@ -33,7 +33,10 @@ const events: CalendarEvent<Meta>[] = [
   instead of a time range; override the wording with `allDayLabel` (e.g. for a
   different language).
 - `disabled` opts an event out of drag interactions.
-- Multi-day events render on each day they span, clipped per day.
+- `draggable`, `startEditable`, and `durationEditable` control per-event drag and
+  resize (see the [drag guide](/guides/dragging)).
+- Multi-day events draw as one continuous bar across the days they span in the
+  month view, and as a per-day clipped segment on the week/day time grid.
 
 ## Render your own event
 

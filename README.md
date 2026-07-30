@@ -290,7 +290,8 @@ The built-in renderer hard-clips a title that overflows its box. Pass
 Pass `onDragEvent` to make events draggable on the week/day grid. Move an event
 (**long-press** it on native, **click-drag** it on web) — drag **vertically to
 change the time, horizontally to move it to another day** (within the visible
-range) — or **drag the grip at its bottom edge** to resize. The handler receives
+range) — or **drag the grip at its top or bottom edge** to change the start or the
+end. The handler receives
 the new `start`/`end`, snapped to `dragStepMinutes` (default 15) — update your own
 event state in response. On web a plain click still selects and right-click still
 fires, so drag coexists with both:
@@ -314,6 +315,14 @@ onDragEvent={(event, start, end) => {
   setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, start, end } : e)));
 }}
 ```
+
+**Declarative limits.** Common rules are built in, so you don't have to check them
+in `onDragEvent`. Set `eventOverlap={false}` to reject any drag or resize that
+would land an event on top of another. Split move from resize with
+`eventStartEditable` / `eventDurationEditable` grid-wide (or `startEditable` /
+`durationEditable` per event). Lock a single event in place with
+`draggable: false`, keeping it tappable and normal-looking. See the
+[drag guide](https://super-calendar.afonsojramos.me/guides/dragging) for details.
 
 **Haptics on grab.** `onDragStart` fires the instant an event is picked up for a
 move or resize, before anything is committed. The library stays expo-free, so
