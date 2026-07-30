@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.1](https://github.com/afonsojramos/super-calendar/compare/v2.8.0...v2.8.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* honor highlightWeekends in the month view ([e6de131](https://github.com/afonsojramos/super-calendar/commit/e6de131ac421e858d870cb2d3b1ea63e36a28ff2))
+
 ## [2.8.0](https://github.com/afonsojramos/super-calendar/compare/v2.7.0...v2.8.0) (2026-07-29)
 
 
