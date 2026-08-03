@@ -1,0 +1,105 @@
+---
+title: Coming from FullCalendar
+description: A concept map for porting a FullCalendar app to super-calendar, on React Native or the web.
+---
+
+[FullCalendar](https://fullcalendar.io) is the reference event calendar on the
+web, and its API shaped several of super-calendar's props on purpose. This is not
+a drop-in swap: FullCalendar is plugin-based and web-only, super-calendar is a
+single component with two renderers. But the concepts line up closely, which
+makes a port tractable, and it is the practical answer to the long-standing ask
+for [a FullCalendar-style calendar on React Native](https://github.com/fullcalendar/fullcalendar/issues/7076).
+
+Use this page as the concept map. If you are moving to React Native, also read
+[Migrating from calendar-kit](/migrating-from-calendar-kit) for the RN setup
+steps (Reanimated, Gesture Handler); on the web use `@super-calendar/dom`.
+
+<Note>
+  Checked against FullCalendar v7 in mid-2026. Verify option names against your installed version,
+  and note that some FullCalendar features are Premium.
+</Note>
+
+## No plugins
+
+FullCalendar assembles a calendar from plugins (`@fullcalendar/daygrid`,
+`timegrid`, `interaction`, `resource-timeline`, `rrule`). super-calendar has no
+plugin system: month, week/day, schedule, year, resources, drag, and recurrence
+are all in the package. You pick a view with `mode`, not `plugins` +
+`initialView`.
+
+## Concept map
+
+| FullCalendar                                   | super-calendar                                                |
+| ---------------------------------------------- | ------------------------------------------------------------- |
+| `plugins` + `initialView: "dayGridMonth"`      | `mode="month"`                                                |
+| `timeGridWeek` / `timeGridDay`                 | `mode="week"` / `mode="day"`                                  |
+| `listWeek`                                     | `mode="schedule"`                                             |
+| `multiMonthYear`                               | `mode="year"`                                                 |
+| `resourceTimeline` (Premium)                   | the `ResourceTimeline` component (free)                       |
+| controlled via `datesSet` + API                | controlled `date` + `onChangeDate` / `onChangeDateRange`      |
+| `events` (array / feed / function source)      | `events` array of `CalendarEvent<T>` (fetch feeds yourself)   |
+| `eventClick`                                   | `onPressEvent`                                                |
+| `dateClick` / `select`                         | `onPressCell` / `onPressDay` / `onCreateEvent`                |
+| `editable`                                     | `onDragEvent` (enables move + resize)                         |
+| `eventStartEditable` / `eventDurationEditable` | `eventStartEditable` / `eventDurationEditable` (same names)   |
+| `eventOverlap={false}`                         | `eventOverlap={false}` (same name)                            |
+| `businessHours` / `eventConstraint`            | `businessHours` (shading) + return `false` from `onDragEvent` |
+| `eventContent` / `eventDidMount`               | `renderEvent` (a component)                                   |
+| `rrule` plugin                                 | `expandRecurringEvents` + a `recurrence` field                |
+| `timeZone`                                     | `timeZone` prop + `eventsInTimeZone` (display-only)           |
+| background events (`display: "background"`)    | background events (an event with `display: "background"`)     |
+| `headerToolbar`                                | build your own controls (or `headerComponent`)                |
+
+The editable, overlap, and business-hours names match on purpose, so those parts
+of a port are close to a rename.
+
+## The port prompt
+
+Copy this into a coding agent working in your repo.
+
+```text
+You are porting a FullCalendar app to super-calendar. On the web import from
+`@super-calendar/dom`; on React Native import from `@super-calendar/native` and
+add its peers (Reanimated v4, Gesture Handler, Worklets, @legendapp/list v3,
+date-fns) with <GestureHandlerRootView> at the root. Rewrite the calendar rather
+than renaming plugins.
+
+1. Replace the <FullCalendar plugins={...} initialView=...> element with a single
+   <Calendar mode=... date=... onChangeDate=... events=...>. Map views:
+   dayGridMonth -> "month", timeGridWeek -> "week", timeGridDay -> "day",
+   listWeek -> "schedule", multiMonthYear -> "year". Resource timeline becomes
+   the separate <ResourceTimeline> component.
+2. Hold the anchor date in state; replace datesSet/goto API calls with setting
+   `date` and reading `onChangeDate` / `onChangeDateRange`.
+3. Events: pass an array of { start: Date, end: Date, title, ...your fields }.
+   Convert ISO strings to Date. For URL/Google/iCal feeds, fetch them yourself
+   (use `parseICalendar` for iCal text). Keep your own event objects for saving.
+4. Handlers: eventClick -> onPressEvent; dateClick/select -> onPressCell /
+   onPressDay / onCreateEvent; editable -> onDragEvent(event, start, end);
+   eventStartEditable / eventDurationEditable / eventOverlap keep their names;
+   enforce eventConstraint/businessHours by returning false from onDragEvent.
+5. Rendering: eventContent/eventDidMount -> a `renderEvent` component.
+6. Recurrence: replace the rrule plugin with `expandRecurringEvents(events,
+   rangeStart, rangeEnd)` over the visible range, or set `recurrence` on events.
+7. There is no built-in header toolbar; render your own prev/next/title controls
+   and drive `date` / `mode`.
+
+Then run the app and verify views, event placement, drag/resize, and recurrence.
+```
+
+## What differs
+
+- **No built-in toolbar.** FullCalendar ships `headerToolbar`; super-calendar
+  leaves chrome to you (a built-in toolbar is on the roadmap).
+- **Event sources.** FullCalendar fetches URL / Google / iCal feeds for you.
+  super-calendar takes a plain array; fetch feeds yourself, and use
+  [`parseICalendar`](/guides/ical) for iCal text.
+- **Time zones** are display-only via [`eventsInTimeZone`](/guides/time-zones),
+  not a native Temporal/IANA model.
+- **Breadth.** FullCalendar has a larger ecosystem (print, more sources,
+  Premium timeline/scheduler). super-calendar is leaner and MIT-only, and its
+  resource timeline is free.
+
+The upside: one calendar that runs on web **and** React Native from the same
+props, with drag, recurrence, and resources built in. See the
+[comparison](/comparison) and [Why super-calendar](/why).

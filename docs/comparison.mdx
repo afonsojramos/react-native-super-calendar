@@ -1,0 +1,76 @@
+---
+title: Comparison
+description: How super-calendar compares to other React Native calendar libraries, feature by feature.
+---
+
+This is the head-to-head a React Native developer actually faces: the RN calendar
+libraries you might reach for instead. Every one of them is good at what it
+targets, so the table below is a map of trade-offs, not a scoreboard. For the
+"coming from the web" case (FullCalendar, react-big-calendar) see [Coming from
+FullCalendar](/coming-from-fullcalendar) and [Coming from
+react-big-calendar](/coming-from-react-big-calendar).
+
+<Note>
+  Checked mid-2026 against each project's current docs. Libraries move fast, so verify anything
+  load-bearing against the version you install.
+</Note>
+
+## Feature matrix
+
+| Capability                        | super-calendar  | react-native-big-calendar | @howljs/calendar-kit | react-native-calendars | flash-calendar |
+| --------------------------------- | --------------- | ------------------------- | -------------------- | ---------------------- | -------------- |
+| Month grid                        | ✅              | ✅                        | ❌ (top request)     | ✅ dots                | ✅ picker      |
+| Week / day / N-day time grid      | ✅              | ✅                        | ✅                   | ✅ timeline            | ❌             |
+| Agenda / schedule list            | ✅              | ✅                        | ❌                   | ✅                     | ❌             |
+| Resource timeline                 | ✅              | ❌                        | ✅                   | ⚠️ timeline            | ❌             |
+| True multi-day spanning bars      | ✅              | ⚠️ per-day chip           | ✅ time grid         | ❌ dots                | ❌             |
+| Drag to move / resize / create    | ✅              | ❌ (declined upstream)    | ✅                   | ❌                     | ❌             |
+| Recurring events (RRULE)          | ✅ helper       | ❌                        | ✅                   | ❌                     | ❌             |
+| Time-zone display                 | ✅              | ❌                        | ✅ per-event         | ❌                     | ❌             |
+| Overlapping events                | ✅ side-by-side | ⚠️ stacked                | ✅                   | n/a                    | n/a            |
+| Date selection / range picker     | ✅              | ❌                        | ❌                   | ✅                     | ✅             |
+| Virtualized, snap-paged views     | ✅              | ❌                        | ✅                   | ⚠️                     | ✅             |
+| Accessibility (labels + keyboard) | ✅              | ⚠️                        | ⚠️                   | ⚠️                     | ⚠️             |
+| Theming / custom render           | ✅              | ✅                        | ✅                   | ✅                     | ✅             |
+| Dark-mode preset                  | ✅ `darkTheme`  | ❌ bring your own         | ✅                   | ⚠️                     | ⚠️             |
+| Also runs on the web (same API)   | ✅              | ⚠️ partial                | ❌                   | ❌                     | ❌             |
+| License                           | MIT             | MIT                       | MIT                  | MIT                    | MIT            |
+
+Legend: ✅ built in · ➕ official add-on · ⚠️ partial or with caveats · ❌ not available.
+
+## What each one is best at
+
+Picking the right tool matters more than a row of checkmarks:
+
+- **[react-native-big-calendar](https://github.com/acro5piano/react-native-big-calendar)**
+  has the lightest footprint here (`dayjs` + `calendarize`, no Reanimated or
+  Gesture Handler). If you want month/week/day/agenda without gestures,
+  virtualization, or drag, it is the simpler dependency story. super-calendar is
+  its spiritual successor, so the `<Calendar>` API is close: see [Migrating from
+  react-native-big-calendar](/migrating-from-big-calendar).
+- **[@howljs/calendar-kit](https://github.com/howljs/react-native-calendar-kit)**
+  has an excellent time grid with pinch-zoom, haptics, resources, RRULE, and
+  per-event time zones. Its gap is the month and agenda views (the month view is
+  its most-requested feature). If you only need day/week scheduling, it is a
+  strong choice. See [Migrating from calendar-kit](/migrating-from-calendar-kit).
+- **[react-native-calendars](https://github.com/wix/react-native-calendars)** (Wix)
+  is the most established, with a mature marked-dates month, agenda, and timeline.
+  It has no event drag, recurrence, or all-day spanning bars (it marks days with
+  dots), and the project has been quieter lately.
+- **[flash-calendar](https://github.com/MarceloPrado/flash-calendar)** is a fast,
+  tiny infinite-scroll date picker built on FlashList. It has no event model, so
+  it is a picker rather than an event calendar. It inspired our `MonthList`.
+
+## Why super-calendar
+
+The axis that sets it apart is one calendar model that runs on **React DOM and
+React Native** from the same API, with events, drag-and-drop, recurrence, time
+zones, and resources built in and free. If you are web-only, a mature web
+library like [FullCalendar](https://fullcalendar.io) may still suit you better;
+if you only need a native date picker, flash-calendar is leaner. Reach for
+super-calendar when you want a full event calendar that behaves the same across
+platforms.
+
+See also [Why super-calendar](/why) for the high-level positioning and the [dom
+vs native comparison](/reference/renderers) for what differs between the two
+renderers.

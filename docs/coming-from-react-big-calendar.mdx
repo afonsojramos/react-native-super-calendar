@@ -1,0 +1,128 @@
+---
+title: Coming from react-big-calendar
+description: A concept map for porting a react-big-calendar app to super-calendar, on the web or React Native.
+---
+
+[react-big-calendar](https://github.com/jquense/react-big-calendar) is a popular
+web React calendar. super-calendar covers the same month/week/day/agenda model
+with a similar controlled component, so a port is mostly mapping props, plus
+picking up things react-big-calendar leaves to you (drag, recurrence). It is not
+a drop-in swap: there is no `localizer`, dates are `Date` objects, and drag is
+built in rather than an add-on.
+
+On the web import from `@super-calendar/dom`; on React Native import from
+`@super-calendar/native` (and add its native peers). This page is the concept
+map; hand the [prompt](#the-port-prompt) to your agent for the mechanical part.
+
+<Note>
+  Checked against react-big-calendar 1.x in mid-2026. Verify prop names against your installed
+  version.
+</Note>
+
+## Concept map
+
+| react-big-calendar                                           | super-calendar                                                 |
+| ------------------------------------------------------------ | -------------------------------------------------------------- |
+| `localizer` (`dateFnsLocalizer`, `momentLocalizer`)          | no localizer; `locale` (a date-fns `Locale`) + `weekStartsOn`  |
+| `events` + `startAccessor` / `endAccessor` / `titleAccessor` | `events` with `start` / `end` / `title` (Dates)                |
+| `view` / `onView`                                            | `mode` (`month` `week` `day` `3days` `custom` `schedule`)      |
+| `date` / `onNavigate`                                        | `date` / `onChangeDate`                                        |
+| `views={["month","week","day","agenda"]}`                    | switch `mode`; `agenda` maps to `schedule`                     |
+| `onSelectEvent`                                              | `onPressEvent`                                                 |
+| `onSelectSlot` (`selectable`)                                | `onPressCell` / `onPressDay` / `onCreateEvent`                 |
+| `withDragAndDrop` HOC + `onEventDrop` / `onEventResize`      | `onDragEvent(event, start, end)` (built in)                    |
+| `components={{ event, toolbar, ... }}`                       | `renderEvent`, `headerComponent`, `renderTimeGridHeader`       |
+| `eventPropGetter` / `dayPropGetter`                          | `eventCellStyle` / `calendarCellStyle` (+ `classNames` on web) |
+| `min` / `max` (time-grid bounds)                             | `minHour` / `maxHour`                                          |
+| `messages` (label strings)                                   | `locale`, plus `moreLabel` / `allDayLabel`                     |
+| (no recurrence)                                              | `expandRecurringEvents` + a `recurrence` field                 |
+
+## Before and after
+
+react-big-calendar:
+
+```tsx
+import { Calendar, dateFnsLocalizer } from "react-big-calendar";
+
+const localizer = dateFnsLocalizer(/* ... */);
+
+<Calendar
+  localizer={localizer}
+  events={events}
+  defaultView="week"
+  onSelectEvent={(event) => open(event)}
+  onSelectSlot={(slot) => create(slot.start, slot.end)}
+  selectable
+/>;
+```
+
+super-calendar (web renderer):
+
+```tsx
+import { useState } from "react";
+import { Calendar } from "@super-calendar/dom";
+
+function Schedule({ events }) {
+  const [date, setDate] = useState(() => new Date());
+  return (
+    <Calendar
+      mode="week"
+      date={date}
+      onChangeDate={setDate}
+      events={events}
+      onPressEvent={(event) => open(event)}
+      onCreateEvent={(start, end) => create(start, end)}
+    />
+  );
+}
+```
+
+## The port prompt
+
+Copy this into a coding agent working in your repo.
+
+```text
+You are porting a react-big-calendar app to super-calendar. On the web import
+from `@super-calendar/dom`; on React Native import from `@super-calendar/native`
+(add Reanimated v4, Gesture Handler, Worklets, @legendapp/list v3, date-fns and
+wrap the app in <GestureHandlerRootView>). Rewrite the calendar element rather
+than renaming a localizer.
+
+1. Drop the `localizer`. Pass `weekStartsOn` and, for non-English, a date-fns
+   `Locale` as `locale`. Ensure event `start`/`end` are Date objects (not the
+   accessor strings); fold startAccessor/endAccessor/titleAccessor into the event
+   shape { start, end, title, ...yourFields }.
+2. Replace `view`/`onView` with `mode`, and `date`/`onNavigate` with `date` +
+   `onChangeDate`. Map views: month->"month", week->"week", day->"day",
+   agenda->"schedule".
+3. Handlers: onSelectEvent -> onPressEvent; onSelectSlot -> onCreateEvent (drag)
+   and onPressCell/onPressDay (tap).
+4. Drag/resize: remove the withDragAndDrop HOC and onEventDrop/onEventResize; add
+   onDragEvent(event, start, end) (return false to reject). Set eventOverlap={false}
+   to block overlaps declaratively.
+5. Custom rendering: components.event -> a `renderEvent` component;
+   components.toolbar -> your own controls or `headerComponent`; eventPropGetter/
+   dayPropGetter -> eventCellStyle/calendarCellStyle (and per-slot `classNames`
+   on the web renderer).
+6. Time-grid bounds min/max -> minHour/maxHour.
+7. Recurrence: react-big-calendar has none; if you expanded rules yourself, use
+   `expandRecurringEvents(events, rangeStart, rangeEnd)` over the visible range.
+8. Note react-big-calendar treats the end date as exclusive; check all-day and
+   multi-day spans render as you expect and adjust the end if needed.
+
+Then run the app and verify views, selection, event placement, and drag.
+```
+
+## What differs
+
+- **Drag is built in.** react-big-calendar is unopinionated and ships drag as the
+  `withDragAndDrop` add-on; super-calendar has [move/resize/create](/guides/dragging)
+  in the box, with declarative `eventOverlap` and editability flags.
+- **Exclusive end dates.** react-big-calendar treats `end` as exclusive; confirm
+  multi-day and all-day events land right after the port.
+- **No localizer object.** Formatting comes from date-fns via `locale`.
+- **It also runs on React Native** from the same props, which react-big-calendar
+  does not.
+
+See the [comparison](/comparison), [Dragging](/guides/dragging), and
+[Recurring events](/guides/recurring-events).

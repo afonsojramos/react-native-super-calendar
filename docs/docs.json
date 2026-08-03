@@ -22,7 +22,16 @@
     "groups": [
       {
         "group": "Getting started",
-        "pages": ["index", "why", "quickstart", "demo", "migrating-from-big-calendar"]
+        "pages": ["index", "why", "quickstart", "demo", "comparison"]
+      },
+      {
+        "group": "Migrating",
+        "pages": [
+          "migrating-from-big-calendar",
+          "migrating-from-calendar-kit",
+          "coming-from-fullcalendar",
+          "coming-from-react-big-calendar"
+        ]
       },
       {
         "group": "Views",

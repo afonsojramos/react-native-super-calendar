@@ -1,0 +1,127 @@
+---
+title: Migrating from calendar-kit
+description: Move a React Native app from @howljs/calendar-kit to super-calendar, with an agent prompt and a concept map.
+---
+
+[@howljs/calendar-kit](https://github.com/howljs/react-native-calendar-kit) and
+super-calendar overlap on the time grid: day, 3-day, and week views, resources,
+drag, and per-event time zones. super-calendar adds the month and agenda views
+calendar-kit doesn't have, plus the same calendar on the web.
+
+The APIs are shaped differently, so this is a rewrite of the calendar layer, not
+a prop rename. calendar-kit composes three components
+(`CalendarContainer` > `CalendarHeader` + `CalendarBody`) and drives them through
+a ref; super-calendar is a single controlled `<Calendar>` you pass `date` and
+`mode`. The fastest path is to hand the prompt below to your coding agent; the
+[concept map](#concept-map) is the reference behind it.
+
+<Note>
+  Checked against calendar-kit v2 in mid-2026. Verify prop names against the version you have
+  installed.
+</Note>
+
+## The migration prompt
+
+Copy this into Claude Code, Cursor, or any coding agent working in your repo.
+
+```text
+You are migrating a React Native app from `@howljs/calendar-kit` to
+`@super-calendar/native`. They overlap on the time-grid views (day/3-day/week),
+resources, and drag, but the component shape is different, so rewrite the
+calendar layer rather than renaming props. Make the smallest changes that
+compile and preserve the current behaviour.
+
+1. Dependencies
+   - Remove `@howljs/calendar-kit`.
+   - Add `@super-calendar/native` and its peers: `react-native-reanimated` (v4),
+     `react-native-gesture-handler`, `react-native-worklets`, `@legendapp/list`
+     (v3), and `date-fns`. On Expo use `npx expo install`. Keep
+     `<GestureHandlerRootView style={{ flex: 1 }}>` at the app root.
+
+2. Component shape
+   - Replace the `CalendarContainer` / `CalendarHeader` / `CalendarBody`
+     composition with a single `<Calendar>`.
+   - calendar-kit is driven imperatively through a ref (`goToDate`, `goToNextPage`);
+     super-calendar is controlled. Hold `date` in state, render
+     `<Calendar date={date} mode={mode} onChangeDate={setDate} />`, and change
+     `date` / `mode` instead of calling ref methods.
+   - Map the view: `numberOfDays={1|3|7}` becomes `mode="day" | "3days" | "week"`.
+     There is no `CalendarBody` scroll config; the grid fills its parent, so wrap
+     it in a `flex: 1` container.
+
+3. Events
+   - Pass the same event array to `events`. super-calendar reads `start`, `end`,
+     and `title` (Dates, not ISO strings), plus any of your own fields via the
+     generic `CalendarEvent<T>`. Convert ISO strings to `Date`.
+   - `onPressEvent` maps directly. `onLongPressEvent` maps directly.
+   - Drag-to-edit (`onDragEventEnd`-style handlers) becomes a single
+     `onDragEvent={(event, start, end) => ...}`; return `false` to reject a drop.
+   - Drag-to-create (`onDragCreateEnd`) becomes `onCreateEvent={(start, end) => ...}`.
+   - Tapping empty space maps to `onPressCell`.
+
+4. Resources
+   - The resource view moves to the `ResourceTimeline` component (import from
+     `@super-calendar/native`). Pass `resources` and read each event's lane via
+     `resourceId`. Its drag handler is `onDragEvent(event, start, end, resource)`.
+
+5. Views calendar-kit doesn't have
+   - Add `mode="month"` and `mode="schedule"` where useful; they come for free.
+
+6. Theming
+   - Move the `theme` object to super-calendar's `theme` prop
+     (see the theming guide) and, on web, per-slot `classNames`.
+
+After migrating, run the app and check: the time grid renders, events land in the
+right slots, drag/resize/create still fire your handlers, and resources page as
+before.
+```
+
+## Concept map
+
+| calendar-kit                                            | super-calendar                             |
+| ------------------------------------------------------- | ------------------------------------------ |
+| `CalendarContainer` + `CalendarHeader` + `CalendarBody` | one `<Calendar>` component                 |
+| ref methods (`goToDate`, `goToNextPage`)                | controlled `date` + `onChangeDate`         |
+| `numberOfDays={1\|3\|7}`                                | `mode="day" \| "3days" \| "week"`          |
+| (no month view)                                         | `mode="month"`                             |
+| (no agenda view)                                        | `mode="schedule"`                          |
+| `events` (ISO strings)                                  | `events` (`CalendarEvent<T>` with `Date`s) |
+| `onPressEvent` / `onLongPressEvent`                     | `onPressEvent` / `onLongPressEvent`        |
+| drag-to-edit handler                                    | `onDragEvent(event, start, end)`           |
+| drag-to-create handler                                  | `onCreateEvent(start, end)`                |
+| press background                                        | `onPressCell(date)`                        |
+| resources on `CalendarContainer`                        | the `ResourceTimeline` component           |
+| `theme` object                                          | `theme` prop (+ `classNames` on web)       |
+
+A minimal week grid after migrating:
+
+```tsx
+import { useState } from "react";
+import { Calendar, type CalendarEvent } from "@super-calendar/native";
+
+export function Schedule({ events }: { events: CalendarEvent[] }) {
+  const [date, setDate] = useState(() => new Date());
+  return (
+    <Calendar
+      mode="week"
+      date={date}
+      onChangeDate={setDate}
+      events={events}
+      onPressEvent={(event) => console.log(event.title)}
+      onDragEvent={(event, start, end) => console.log("moved", event.title, start, end)}
+    />
+  );
+}
+```
+
+## What you gain, and what calendar-kit still does better
+
+super-calendar adds the **month** and **schedule** views calendar-kit lacks,
+[recurring events](/guides/recurring-events), and the same calendar on the
+[web](/guides/dom). calendar-kit remains a focused, polished time grid: if you
+only need day/week scheduling and never a month or agenda, it is a smaller
+surface with its own pinch-zoom and haptics. Both are MIT and free, including
+drag.
+
+See [Dragging](/guides/dragging), [Resource timeline](/guides/resource-timeline),
+and the [full comparison](/comparison).

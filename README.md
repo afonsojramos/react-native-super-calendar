@@ -66,6 +66,11 @@ last row is the honest trade-off: big-calendar has a smaller footprint and fewer
 native peers, so it can be the simpler choice when you don't need the gestures,
 virtualization, or the helpers above.
 
+For a feature-by-feature matrix across the other React Native calendar libraries
+(calendar-kit, react-native-calendars, flash-calendar), and porting guides for
+FullCalendar and react-big-calendar, see the
+[comparison](https://super-calendar.afonsojramos.me/comparison).
+
 **What it adds over react-native-big-calendar**
 
 - 🤏 **Pinch-to-zoom** time grid — row height is a Reanimated shared value, so
