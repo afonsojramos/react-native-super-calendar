@@ -148,11 +148,18 @@ export interface CalendarProps<T = unknown>
   dragStepMinutes?: number;
   /** Tap empty grid space. */
   onPressCell?: (date: Date) => void;
-  /** Drag empty grid space to create. */
+  /**
+   * Drag to create: empty grid space on the time-grid modes (a time range), or
+   * across day cells in month and year modes (an all-day span, `end` exclusive).
+   */
   onCreateEvent?: (start: Date, end: Date) => void;
   /** Fires when an event drag begins. */
   onDragStart?: (event: CalendarEvent<T>) => void;
-  /** Enables drag-to-move/resize; return `false` to reject the drop. */
+  /**
+   * Enables drag-to-move/resize on the time grid, and drag-a-chip-to-another-day
+   * in month mode (which shifts the event by whole days and keeps its time).
+   * Return `false` to reject the drop.
+   */
   onDragEvent?: (event: CalendarEvent<T>, start: Date, end: Date) => void | boolean;
   /** Tap a day's column header. */
   onPressDateHeader?: (day: Date) => void;
@@ -189,6 +196,14 @@ export interface CalendarProps<T = unknown>
   keyboardDayNavigation?: boolean;
   /** Tap a day cell. */
   onPressDay?: (date: Date) => void;
+  /**
+   * Enables drag-to-select in month and year modes: press a day and drag across
+   * others to sweep out a range. Fires live with the ordered inclusive
+   * `[start, end]` days, so the highlight follows the drag — pair it with
+   * `useDateRange`'s `selectRange` to drive `selectedRange`. `onCreateEvent` (when
+   * also set) fires once on release for the same sweep.
+   */
+  onSelectDrag?: (start: Date, end: Date) => void;
   /** Tap a month's title in the year view — e.g. jump to that month. */
   onPressMonth?: (month: Date) => void;
   /** Tap the "+N more" overflow row. */
@@ -318,6 +333,7 @@ export function Calendar<T = unknown>({
   isDateDisabled,
   keyboardDayNavigation,
   onPressDay,
+  onSelectDrag,
   onPressMonth,
   onPressMore,
   renderMonthEvent,
@@ -371,8 +387,15 @@ export function Calendar<T = unknown>({
         style={height != null ? { height, ...style } : style}
         classNames={classNames}
         styles={styles}
+        selectedRange={selectedRange}
+        selectedDates={selectedDates}
+        minDate={minDate}
+        maxDate={maxDate}
+        isDateDisabled={isDateDisabled}
         onPressDay={onPressDay}
         onPressMonth={onPressMonth}
+        onSelectDrag={onSelectDrag}
+        onCreateEvent={onCreateEvent}
       />
     );
   } else if (mode === "schedule") {
@@ -421,6 +444,8 @@ export function Calendar<T = unknown>({
         keyboardDayNavigation={keyboardDayNavigation}
         onPressDay={onPressDay}
         onCreateEvent={onCreateEvent}
+        onSelectDrag={onSelectDrag}
+        onDragEvent={onDragEvent}
         onPressEvent={onPressEvent}
         onPressMore={onPressMore}
         renderEvent={renderMonthEvent}

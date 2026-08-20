@@ -27,6 +27,7 @@ import type {
   WeekStartsOn,
 } from "../types";
 import {
+  type DateRange,
   type EventAccessibilityLabeler,
   eventsInTimeZone,
   expandRecurringEvents,
@@ -67,19 +68,20 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   /** Long-press an event (month/week/day). */
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
   /**
-   * Enable drag-to-move and drag-to-resize on the week/day grid. Called with the
-   * dragged event and its new start/end (snapped to `dragStepMinutes`); update
-   * your own event state in response. Long-press an event to move it (drag
-   * horizontally to change the day too); drag its bottom grip to resize. Return
-   * `false` to reject the drop (e.g. an overlap) and snap the event back.
+   * Enable drag-to-move and drag-to-resize. On the week/day grid, long-press an
+   * event to move it (drag horizontally to change the day too) and drag its bottom
+   * grip to resize; in month mode, hold a chip and drop it on another day, which
+   * shifts the event by whole days and keeps its time. Called with the dragged
+   * event and its new start/end (snapped to `dragStepMinutes` on the time grid);
+   * update your own event state in response. Return `false` to reject the drop
+   * (e.g. an overlap) and snap the event back.
    */
   onDragEvent?: EventDragHandler<T>;
   /**
-   * Fired when a move or resize gesture begins on the week/day grid, before any
-   * change is committed: on grab for a move (after the long-press), and when a
-   * resize drag starts. Use it to trigger haptic feedback, e.g.
-   * `Haptics.impactAsync()` from `expo-haptics`. Native-only and inert unless
-   * `onDragEvent` is also set.
+   * Fired when a move or resize gesture begins, before any change is committed: on
+   * grab for a move (after the long-press), and when a resize drag starts. Use it
+   * to trigger haptic feedback, e.g. `Haptics.impactAsync()` from `expo-haptics`.
+   * Native-only and inert unless `onDragEvent` is also set.
    */
   onDragStart?: EventDragStartHandler<T>;
   /** Minutes a drag-to-move/resize snaps to. Default 15. */
@@ -104,13 +106,39 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   /** Long-press empty space on the week/day grid; receives the date+time. */
   onLongPressCell?: (date: Date) => void;
   /**
-   * Enable drag-to-create on the week/day grid: long-press empty space and drag
-   * to sweep out a new event's time range. Called on release with the snapped
-   * `start`/`end` (to `dragStepMinutes`); create your own event in response. A
-   * stationary press yields a one-step range. Native-only; supersedes
-   * `onLongPressCell` on empty space when set.
+   * Enable drag-to-create. On the week/day grid, long-press empty space and drag
+   * to sweep out a new event's time range, reported on release as the snapped
+   * `start`/`end` (to `dragStepMinutes`); a stationary press yields a one-step
+   * range. In month and year modes, hold an empty day and drag across others to
+   * sweep out an all-day span, reported as `start` at midnight of the first day
+   * and `end` at midnight after the last (exclusive). Create your own event in
+   * response. Native-only; on the week/day grid it supersedes `onLongPressCell`
+   * on empty space when set.
    */
   onCreateEvent?: (start: Date, end: Date) => void;
+  /**
+   * Enable drag-to-select in month and year modes: hold a day and drag across
+   * others to sweep out a range. Fires live with the ordered inclusive
+   * `[start, end]` days, so the highlight follows the drag — pair it with
+   * `useDateRange`'s `selectRange` to drive `selectedRange`. `onCreateEvent` (when
+   * also set) fires once on release for the same sweep.
+   */
+  onSelectDrag?: (start: Date, end: Date) => void;
+  /** Days drawn as selected (a filled badge) in month and year modes. */
+  selectedDates?: Date[];
+  /** A selected span: endpoints get a filled badge, the span gets the range band. */
+  selectedRange?: DateRange;
+  /**
+   * Fill the whole month cell with the range band instead of the default centered
+   * rounded "pill" strip. Default false.
+   */
+  fillCellOnSelection?: boolean;
+  /** Earliest selectable day (inclusive); earlier days render disabled. */
+  minDate?: Date;
+  /** Latest selectable day (inclusive); later days render disabled. */
+  maxDate?: Date;
+  /** Return true to render a specific day disabled (dimmed, taps ignored). */
+  isDateDisabled?: (date: Date) => boolean;
   /** Tap a day's column header on the week/day grid (default header only). */
   onPressDateHeader?: (date: Date) => void;
   /**
@@ -380,6 +408,13 @@ export function Calendar<T>({
   resetPageOnPressCell,
   onLongPressCell,
   onCreateEvent,
+  onSelectDrag,
+  selectedDates,
+  selectedRange,
+  fillCellOnSelection,
+  minDate,
+  maxDate,
+  isDateDisabled,
   onPressDateHeader,
   maxVisibleEventCount,
   sortedMonthView,
@@ -558,6 +593,12 @@ export function Calendar<T>({
           isRTL={isRTL}
           showSixWeeks={showSixWeeks}
           activeDate={activeDate}
+          selectedDates={selectedDates}
+          selectedRange={selectedRange}
+          fillCellOnSelection={fillCellOnSelection}
+          minDate={minDate}
+          maxDate={maxDate}
+          isDateDisabled={isDateDisabled}
           renderHeaderForMonthView={renderHeaderForMonthView}
           renderCustomDateForMonth={renderCustomDateForMonth}
           calendarCellStyle={calendarCellStyle}
@@ -568,6 +609,10 @@ export function Calendar<T>({
           onPressEvent={handlePressEvent}
           onLongPressEvent={handleLongPressEvent}
           onPressMore={onPressMore}
+          onSelectDrag={onSelectDrag}
+          onCreateEvent={onCreateEvent}
+          onDragEvent={onDragEvent}
+          onDragStart={onDragStart}
           onChangeDate={handleChangeDate}
           freeSwipe={freeSwipe}
           swipeEnabled={swipeEnabled}
@@ -582,8 +627,15 @@ export function Calendar<T>({
           hiddenDays={hiddenDays}
           locale={locale}
           activeDate={activeDate}
+          selectedDates={selectedDates}
+          selectedRange={selectedRange}
+          minDate={minDate}
+          maxDate={maxDate}
+          isDateDisabled={isDateDisabled}
           onPressDay={onPressDay}
           onPressMonth={onPressMonth}
+          onSelectDrag={onSelectDrag}
+          onCreateEvent={onCreateEvent}
           classNames={classNames}
           styles={styleOverrides}
         />
