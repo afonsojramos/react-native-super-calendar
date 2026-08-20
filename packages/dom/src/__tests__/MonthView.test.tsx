@@ -473,6 +473,27 @@ describe("dom MonthView", () => {
       fireEvent.pointerUp(window);
     });
 
+    it("keeps disabled days out of the sweep", () => {
+      const onSelectDrag = jest.fn();
+      const onCreateEvent = jest.fn();
+      const { container } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[]}
+          minDate={new Date(2026, 6, 8)}
+          onSelectDrag={onSelectDrag}
+          onCreateEvent={onCreateEvent}
+        />,
+      );
+      fireEvent.pointerDown(dayCell(container, "2026-07-10"), { button: 0 });
+      // 6 July is before minDate, so the sweep must not extend onto it.
+      fireEvent.pointerEnter(dayCell(container, "2026-07-06"));
+      expect(onSelectDrag).not.toHaveBeenCalled();
+      fireEvent.pointerUp(window);
+      expect(onCreateEvent).not.toHaveBeenCalled();
+    });
+
     it("orders a backwards sweep", () => {
       const onSelectDrag = jest.fn();
       const { container } = render(
