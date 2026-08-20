@@ -1,4 +1,4 @@
-import { fireEvent, render, within } from "@testing-library/react-native";
+import { act, fireEvent, render, within } from "@testing-library/react-native";
 import { StyleSheet, Text, type ViewStyle } from "react-native";
 import { CalendarThemeProvider, defaultTheme, mergeTheme } from "../../theme";
 import type { CalendarEvent } from "../../types";
@@ -292,5 +292,173 @@ describe("MonthView multi-day events", () => {
     const { getAllByText } = render(<MonthView {...baseProps} events={span} />);
     // One bar spanning two days, not a chip repeated on each day.
     expect(getAllByText("Trip")).toHaveLength(1);
+  });
+});
+
+describe("MonthView drag", () => {
+  // June 2026 with weekStartsOn 0 lays out five rows starting Sun 31 May, so a
+  // 700x500 grid puts each column at 100px and each row at 100px.
+  const GRID = { width: 700, height: 500 };
+  // A day cell reserves its date badge before the first event lane, so a press
+  // above this offset lands on empty space and one below it lands on a chip.
+  const LANE_Y = 31;
+
+  type PanHandlers = Record<string, (gesture?: { x: number; y: number }) => void>;
+  const latestPan = (): PanHandlers => {
+    const { __gestures } = jest.requireMock("react-native-gesture-handler") as {
+      __gestures: { handlers: PanHandlers }[];
+    };
+    return __gestures[__gestures.length - 1].handlers;
+  };
+  const measure = (getByTestId: (id: string) => unknown) =>
+    fireEvent(getByTestId("month-grid") as never, "layout", { nativeEvent: { layout: GRID } });
+  // Column/row of a June day in the grid above: Mon 15 June sits at row 2, col 1.
+  const at = (col: number, row: number, offsetY: number) => ({
+    x: col * 100 + 50,
+    y: row * 100 + offsetY,
+  });
+
+  it("sweeps a day span into onSelectDrag live and onCreateEvent on release", () => {
+    const onSelectDrag = jest.fn();
+    const onCreateEvent = jest.fn();
+    const { getByTestId } = render(
+      <MonthView {...baseProps} onSelectDrag={onSelectDrag} onCreateEvent={onCreateEvent} />,
+    );
+    measure(getByTestId);
+    const pan = latestPan();
+
+    act(() => pan.onStart(at(1, 2, 10))); // Mon 15 June, above the first lane
+    act(() => pan.onUpdate(at(3, 2, 10))); // Wed 17 June
+    expect(onSelectDrag).toHaveBeenLastCalledWith(new Date(2026, 5, 15), new Date(2026, 5, 17));
+
+    act(() => pan.onFinalize());
+    expect(onCreateEvent).toHaveBeenCalledTimes(1);
+    const [start, end] = onCreateEvent.mock.calls[0] as [Date, Date];
+    expect(start).toEqual(new Date(2026, 5, 15));
+    // End is exclusive: midnight after the last swept day.
+    expect(end).toEqual(new Date(2026, 5, 18));
+  });
+
+  it("commits nothing when the hold never leaves its day", () => {
+    const onCreateEvent = jest.fn();
+    const { getByTestId } = render(<MonthView {...baseProps} onCreateEvent={onCreateEvent} />);
+    measure(getByTestId);
+    const pan = latestPan();
+
+    act(() => pan.onStart(at(1, 2, 10)));
+    act(() => pan.onUpdate(at(1, 2, 12)));
+    act(() => pan.onFinalize());
+    expect(onCreateEvent).not.toHaveBeenCalled();
+  });
+
+  it("keeps a sweep inside the selectable range", () => {
+    const onSelectDrag = jest.fn();
+    const { getByTestId } = render(
+      <MonthView {...baseProps} maxDate={new Date(2026, 5, 16)} onSelectDrag={onSelectDrag} />,
+    );
+    measure(getByTestId);
+    const pan = latestPan();
+
+    act(() => pan.onStart(at(1, 2, 10))); // Mon 15 June
+    act(() => pan.onUpdate(at(3, 2, 10))); // Wed 17 June, past maxDate
+    expect(onSelectDrag).not.toHaveBeenCalled();
+    act(() => pan.onUpdate(at(2, 2, 10))); // Tue 16 June, the last selectable day
+    expect(onSelectDrag).toHaveBeenLastCalledWith(new Date(2026, 5, 15), new Date(2026, 5, 16));
+  });
+
+  it("carries an event chip onto another day and shifts it by whole days", () => {
+    const event: CalendarEvent = {
+      title: "Standup",
+      start: new Date(2026, 5, 15, 9),
+      end: new Date(2026, 5, 15, 10),
+    };
+    const onDragEvent = jest.fn();
+    const { getByTestId } = render(
+      <MonthView {...baseProps} events={[event]} onDragEvent={onDragEvent} />,
+    );
+    measure(getByTestId);
+    const pan = latestPan();
+
+    act(() => pan.onStart(at(1, 2, LANE_Y))); // on the chip, Mon 15 June
+    act(() => pan.onUpdate(at(3, 2, LANE_Y))); // Wed 17 June
+    act(() => pan.onFinalize());
+
+    expect(onDragEvent).toHaveBeenCalledTimes(1);
+    const [dragged, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect(dragged).toBe(event);
+    // Two days later, same time of day.
+    expect(start).toEqual(new Date(2026, 5, 17, 9));
+    expect(end).toEqual(new Date(2026, 5, 17, 10));
+  });
+
+  it("sweeps instead of carrying when the hold lands below the chips", () => {
+    const event: CalendarEvent = {
+      title: "Standup",
+      start: new Date(2026, 5, 15, 9),
+      end: new Date(2026, 5, 15, 10),
+    };
+    const onDragEvent = jest.fn();
+    const onCreateEvent = jest.fn();
+    const { getByTestId } = render(
+      <MonthView
+        {...baseProps}
+        events={[event]}
+        onDragEvent={onDragEvent}
+        onCreateEvent={onCreateEvent}
+      />,
+    );
+    measure(getByTestId);
+    const pan = latestPan();
+
+    act(() => pan.onStart(at(1, 2, 10))); // above the first lane: empty day space
+    act(() => pan.onUpdate(at(3, 2, 10)));
+    act(() => pan.onFinalize());
+    expect(onDragEvent).not.toHaveBeenCalled();
+    expect(onCreateEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not carry an event the consumer locked", () => {
+    const onDragEvent = jest.fn();
+    const { getByTestId } = render(
+      <MonthView
+        {...baseProps}
+        events={[
+          {
+            title: "Standup",
+            start: new Date(2026, 5, 15, 9),
+            end: new Date(2026, 5, 15, 10),
+            draggable: false,
+          },
+        ]}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    measure(getByTestId);
+    const pan = latestPan();
+
+    act(() => pan.onStart(at(1, 2, LANE_Y)));
+    act(() => pan.onUpdate(at(3, 2, LANE_Y)));
+    act(() => pan.onFinalize());
+    expect(onDragEvent).not.toHaveBeenCalled();
+  });
+
+  it("swallows the tap that follows a committed drag", () => {
+    const onPressDay = jest.fn();
+    const onCreateEvent = jest.fn();
+    const { getByTestId, getByLabelText } = render(
+      <MonthView {...baseProps} onPressDay={onPressDay} onCreateEvent={onCreateEvent} />,
+    );
+    measure(getByTestId);
+    const pan = latestPan();
+
+    act(() => pan.onStart(at(1, 2, 10)));
+    act(() => pan.onUpdate(at(3, 2, 10)));
+    act(() => pan.onFinalize());
+
+    fireEvent.press(getByLabelText(/17 June 2026/));
+    expect(onPressDay).not.toHaveBeenCalled();
+    // Only the drag's trailing tap is swallowed; the next one goes through.
+    fireEvent.press(getByLabelText(/17 June 2026/));
+    expect(onPressDay).toHaveBeenCalledTimes(1);
   });
 });
