@@ -55,6 +55,27 @@ export function snapDeltaMinutes(
   return Math.round(rawMinutes / stepMinutes) * stepMinutes;
 }
 
+/**
+ * Where a moved event may start, in minutes from midnight, given the grid's
+ * visible hour window. A move keeps its duration, so only the start is held
+ * inside the window: it can reach one `snapMinutes` step before `maxHour`, and
+ * the end is free to run past the end of the day, continuing on the following
+ * day. That keeps the event starting in the column it was dropped on (a
+ * cross-day *move* is the horizontal drag) while still allowing a range that
+ * spans midnight. Runs on the UI thread inside the drag gesture.
+ */
+export function clampMoveStartMinutes(
+  startMinutes: number,
+  minHour: number,
+  maxHour: number,
+  snapMinutes: number,
+): number {
+  "worklet";
+  const lower = minHour * 60;
+  const upper = Math.max(lower, maxHour * 60 - snapMinutes);
+  return Math.min(Math.max(startMinutes, lower), upper);
+}
+
 /** A copy of `date` shifted by `minutes` (may be negative). */
 export function shiftMinutes(date: Date, minutes: number): Date {
   const next = new Date(date);
