@@ -1,4 +1,4 @@
-import { addDays, startOfDay } from "date-fns";
+import { addDays, differenceInCalendarDays, startOfDay } from "date-fns";
 import type { CalendarEvent, CalendarMode, WeekStartsOn } from "../types";
 import { getViewDays } from "./dates";
 
@@ -89,6 +89,36 @@ export function resolveDraggedBounds(
 }
 
 /**
+ * The all-day range swept out between two day cells of the month grid, ordered
+ * whichever way the sweep ran: `start` is midnight of the first day and `end` is
+ * midnight after the last, so a one-day sweep still yields a usable event. Shared
+ * by both renderers so a month drag-to-create means the same thing on each.
+ */
+export function monthCreateRange(anchor: Date, hover: Date): { start: Date; end: Date } {
+  const a = startOfDay(anchor);
+  const b = startOfDay(hover);
+  const first = a.getTime() <= b.getTime() ? a : b;
+  const last = a.getTime() <= b.getTime() ? b : a;
+  return { start: first, end: addDays(last, 1) };
+}
+
+/**
+ * The new bounds for an event picked up on `fromDay` and dropped on `toDay` in
+ * the month grid: both ends move by the same number of calendar days, so the
+ * event keeps its time of day and duration (DST included). Returns `null` when
+ * the drop lands on the day it started, so a stray drag commits nothing.
+ */
+export function monthDropBounds<T>(
+  event: CalendarEvent<T>,
+  fromDay: Date,
+  toDay: Date,
+): { start: Date; end: Date } | null {
+  const delta = differenceInCalendarDays(startOfDay(toDay), startOfDay(fromDay));
+  if (delta === 0) return null;
+  return { start: addDays(event.start, delta), end: addDays(event.end, delta) };
+}
+
+/**
  * The start/end of a new event swept out on `day` by dragging from `startPx` to
  * `endPx` (vertical pixels from the grid's top, i.e. the `minHour` line). Both
  * ends snap to `snapMinutes`; the range is ordered (drag up or down) and widened
@@ -122,27 +152,4 @@ export function cellRangeFromDrag(
   end.setHours(0, 0, 0, 0);
   end.setMinutes(upper);
   return { start, end };
-}
-
-/**
- * The all-day range swept out between two day cells of a month or year grid.
- * Ordered (sweeping backwards works) and half-open: `start` is midnight of the
- * first day and `end` is midnight after the last, so a one-day sweep spans a
- * whole day. Pure, so the commit path is unit-testable without a running gesture.
- */
-export function dayRangeFromDrag(anchor: Date, hover: Date): { start: Date; end: Date } {
-  const a = startOfDay(anchor);
-  const b = startOfDay(hover);
-  const [lower, upper] = a.getTime() <= b.getTime() ? [a, b] : [b, a];
-  return { start: lower, end: addDays(upper, 1) };
-}
-
-/**
- * An event's bounds after moving it `days` whole calendar days (negative moves it
- * earlier), keeping its wall-clock time and its duration across a DST boundary.
- * Used by the month grid's drag-to-move, where a drop changes the day a chip sits
- * on but not its time of day.
- */
-export function shiftEventDays(start: Date, end: Date, days: number): { start: Date; end: Date } {
-  return { start: addDays(start, days), end: addDays(end, days) };
 }

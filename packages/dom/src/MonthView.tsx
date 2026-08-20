@@ -1,6 +1,5 @@
 import {
   addDays,
-  differenceInCalendarDays,
   endOfMonth,
   format,
   isSameMonth,
@@ -26,16 +25,17 @@ import {
   dayBadgeKind,
   type DateRange,
   type DateSelectionConstraints,
-  dayRangeFromDrag,
   type EventAccessibilityLabeler,
   groupEventsByDay,
   isBackgroundEvent,
   isAllDayEvent,
   layoutMonthWeek,
+  monthCreateRange,
+  monthDropBounds,
   type MonthGridDay,
   type MonthGridWeek,
+  overlapsOtherEvents,
   rangeBandKind,
-  shiftEventDays,
   type WeekdayFormat,
   type WeekStartsOn,
 } from "@super-calendar/core";
@@ -69,9 +69,8 @@ const DATE_ROW = 24;
 const CHIP_HEIGHT = 18;
 const CHIP_GAP = 2;
 const CELL_PAD = 4;
-// Pointer travel (px, Manhattan distance) before a press on a chip becomes a
-// drag-to-move rather than a click that opens the event.
-const MOVE_THRESHOLD_PX = 4;
+// Opacity of an event chip while it is being dragged to another day.
+const DRAGGED_CHIP_OPACITY = 0.4;
 
 /** Props passed to a custom month event chip renderer. */
 export interface DomMonthEventArgs<T = unknown> {
@@ -83,6 +82,13 @@ export interface DomMonthEventArgs<T = unknown> {
 
 /** A component that renders a single month-grid event chip. */
 export type DomMonthEvent<T = unknown> = ComponentType<DomMonthEventArgs<T>>;
+
+// An in-progress month drag: either a day span being swept out for a new event,
+// or an existing event being carried to another day. Days are held as start-of-day
+// timestamps, so the reducer-ish updates compare cheaply.
+type MonthDrag<T> =
+  | { kind: "create"; anchor: number; hover: number }
+  | { kind: "move"; event: CalendarEvent<T>; from: number; to: number };
 
 /** Props for {@link MonthView}. */
 export interface MonthViewProps<T = unknown>
@@ -146,6 +152,11 @@ export interface MonthViewProps<T = unknown>
   /** Fired when a selectable day is clicked. */
   onPressDay?: (date: Date) => void;
   /**
+   * Fired alongside `onPressDay` when a day cell is clicked, with the same day at
+   * midnight, so one handler can create events across month and week/day modes.
+   */
+  onPressCell?: (date: Date) => void;
+  /**
    * In events mode, enables drag-to-create: press on a day and drag across others
    * to sketch a span, then release to fire this with the all-day range (`start` at
    * midnight of the first day, `end` at midnight after the last, exclusive). A plain
@@ -154,21 +165,27 @@ export interface MonthViewProps<T = unknown>
    */
   onCreateEvent?: (start: Date, end: Date) => void;
   /**
-   * Enables drag-to-select and reports the swept span live, as the ordered
-   * inclusive `[start, end]` days (both at midnight) — pair it with
-   * `useDateRange`'s `selectRange` to drive `selectedRange`. Fires on every day the
-   * pointer crosses, so the highlight follows the drag; `onCreateEvent` (when also
-   * set) fires once on release. Either handler enables the same sweep gesture.
+   * Reports the day span of a create sweep **as it happens**, as the ordered
+   * inclusive `[start, end]` days (both at midnight), so a selection highlight can
+   * follow the drag instead of appearing only on release — pair it with
+   * `useDateRange`'s `selectRange` to drive `selectedRange`. Enables the sweep on
+   * its own, so it works without `onCreateEvent`.
    */
   onSelectDrag?: (start: Date, end: Date) => void;
   /**
-   * Enables drag-to-move: drag an event chip onto another day and release to fire
-   * this with the event and its new bounds, shifted by whole days (the time of day
-   * and duration are kept). Update your own event state in response. Respects each
-   * event's `draggable` / `startEditable` / `disabled` flags. The day under the
-   * pointer carries `data-dragover` for styling.
+   * In events mode, enables drag-to-reschedule: press an event chip and drop it on
+   * another day. Called with the event and its new `start`/`end`, both shifted by
+   * the whole days dragged, so the time of day and duration are preserved. Return
+   * `false` to reject the drop. The day under the pointer carries `data-drop` for
+   * styling.
    */
   onDragEvent?: (event: CalendarEvent<T>, start: Date, end: Date) => void | boolean;
+  /** Fired the instant an event is picked up for a drag, before anything is committed. */
+  onDragStart?: (event: CalendarEvent<T>) => void;
+  /** Allow moving events by default (per-event `startEditable` overrides). Default true. */
+  eventStartEditable?: boolean;
+  /** Reject a drop that would overlap another event (default true = allowed). */
+  eventOverlap?: boolean;
   /**
    * When events are shown, also make the day cells keyboard-navigable: a single
    * roving tab stop, arrow keys move the focus, Enter opens the day (`onPressDay`).
@@ -301,6 +318,9 @@ function eventCellDefault(
   theme: DomCalendarTheme,
   height: number,
   highlightWeekends: boolean,
+  // True while a drag is over this day: a create sweep covering it, or a move
+  // about to land on it. Tinted over the weekend shading so the drag reads live.
+  isDragTarget: boolean,
 ): SlotDefault {
   return {
     base: {
@@ -319,8 +339,9 @@ function eventCellDefault(
     },
     themed: {
       borderTop: `1px solid ${theme.gridLine}`,
-      background:
-        highlightWeekends && day.isWeekend && !day.isInRange
+      background: isDragTarget
+        ? theme.rangeBackground
+        : highlightWeekends && day.isWeekend && !day.isInRange
           ? theme.weekendBackground
           : "transparent",
       color: day.isDisabled ? theme.textDisabled : theme.text,
@@ -475,9 +496,13 @@ export function MonthView<T = unknown>({
   maxDate,
   isDateDisabled,
   onPressDay,
+  onPressCell,
   onCreateEvent,
   onSelectDrag,
   onDragEvent,
+  onDragStart,
+  eventStartEditable = true,
+  eventOverlap = true,
   keyboardDayNavigation = false,
   className,
   style,
@@ -608,108 +633,93 @@ export function MonthView<T = unknown>({
   const gridRef = useRef<HTMLDivElement>(null);
   const focusKey = format(focusedDate, "yyyy-MM-dd");
 
-  // Drag-to-create / drag-to-select (events mode): press a day and drag across
-  // others to sketch an all-day span, released on a window pointerup so a drop
-  // anywhere still commits. `onSelectDrag` reports the span live during the sweep;
-  // `onCreateEvent` reports it once on release. Either handler enables the gesture.
-  const sweepEnabled = onCreateEvent != null || onSelectDrag != null;
-  const [creating, setCreating] = useState<{ anchor: number; hover: number } | null>(null);
-  const creatingRef = useRef(creating);
-  creatingRef.current = creating;
+  // Dragging (events mode): press a day and drag across others to sketch an
+  // all-day span, or press an event chip and drop it on another day. Both are
+  // released on a window pointerup, so letting go anywhere still commits.
+  const [drag, setDrag] = useState<MonthDrag<T> | null>(null);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
   const movedRef = useRef(false);
-  // Set when a drag commits, so the click the browser fires next is swallowed
-  // (it must not also open the day via onPressDay).
+  // Set when a drag commits, so the click the browser fires next is swallowed (it
+  // must not also open the day, or the event the drag landed on). A drag that ends
+  // over a different element than it began on gets its trailing click on their
+  // common ancestor instead, where no handler consumes the guard — so every press
+  // clears it first, keeping it scoped to the one interaction that set it.
   const suppressClickRef = useRef(false);
-  const beginCreate = (day: Date) => {
-    if (!sweepEnabled) return;
-    const t = startOfDay(day).getTime();
-    movedRef.current = false;
-    setCreating({ anchor: t, hover: t });
+  const consumeSuppressedClick = () => {
+    if (!suppressClickRef.current) return false;
+    suppressClickRef.current = false;
+    return true;
   };
-  const extendCreate = (day: Date) => {
-    if (!creatingRef.current) return;
-    const t = startOfDay(day).getTime();
-    if (t !== creatingRef.current.hover) {
-      movedRef.current = true;
-      setCreating((c) => (c ? { ...c, hover: t } : c));
-      const anchor = creatingRef.current.anchor;
-      const [lo, hi] = anchor <= t ? [anchor, t] : [t, anchor];
-      onSelectDrag?.(new Date(lo), new Date(hi));
-    }
-  };
-  const isCreating = creating !== null;
-  useEffect(() => {
-    if (!isCreating) return;
-    const finish = () => {
-      const c = creatingRef.current;
-      setCreating(null);
-      if (!c || !movedRef.current) return;
-      suppressClickRef.current = true;
-      const range = dayRangeFromDrag(new Date(c.anchor), new Date(c.hover));
-      onCreateEvent?.(range.start, range.end);
-    };
-    window.addEventListener("pointerup", finish);
-    return () => window.removeEventListener("pointerup", finish);
-  }, [isCreating, onCreateEvent]);
-
-  // Drag-to-move: pick an event chip up and drop it on another day. The drag only
-  // arms on pointerdown; it activates once the pointer travels past a small
-  // threshold, so a plain click still opens the event. The day under the pointer
-  // comes from the cells' own pointerenter (the chips go non-interactive while a
-  // drag is live), so a drop lands on the day it visually covers.
-  const [moving, setMoving] = useState<{
-    event: CalendarEvent<T>;
-    from: number;
-    over: number;
-    active: boolean;
-  } | null>(null);
-  const movingRef = useRef(moving);
-  movingRef.current = moving;
-  const moveOriginRef = useRef({ x: 0, y: 0 });
-  const canDragEvent = (event: CalendarEvent<T>) =>
+  // `disabled` and `draggable: false` lock an event outright; `startEditable`
+  // (per event, falling back to the grid default) allows or blocks a move.
+  const canMove = (event: CalendarEvent<T>) =>
     onDragEvent != null &&
     !event.disabled &&
     event.draggable !== false &&
-    (event.startEditable ?? true);
-  const beginMove = (event: CalendarEvent<T>, day: Date, clientX: number, clientY: number) => {
-    const t = startOfDay(day).getTime();
-    moveOriginRef.current = { x: clientX, y: clientY };
-    setMoving({ event, from: t, over: t, active: false });
+    (event.startEditable ?? eventStartEditable);
+  // A fresh press starts a new interaction, so any guard left over from the
+  // previous one is stale.
+  const beginPress = () => {
+    suppressClickRef.current = false;
+    movedRef.current = false;
   };
-  const extendMove = (day: Date) => {
+  const beginCreate = (day: Date) => {
+    if (!onCreateEvent && !onSelectDrag) return;
     const t = startOfDay(day).getTime();
-    setMoving((m) => (m && m.over !== t ? { ...m, over: t } : m));
+    setDrag({ kind: "create", anchor: t, hover: t });
   };
-  const isMoveArmed = moving !== null;
-  const isMoving = moving?.active === true;
+  const beginMove = (event: CalendarEvent<T>, day: Date) => {
+    if (!canMove(event)) return;
+    const t = startOfDay(day).getTime();
+    setDrag({ kind: "move", event, from: t, to: t });
+    onDragStart?.(event);
+  };
+  const extendDrag = (day: Date) => {
+    const current = dragRef.current;
+    if (!current) return;
+    const t = startOfDay(day).getTime();
+    if (t === (current.kind === "create" ? current.hover : current.to)) return;
+    movedRef.current = true;
+    setDrag(current.kind === "create" ? { ...current, hover: t } : { ...current, to: t });
+    // A sweep reports its span live, so a selection can track the drag; a move
+    // has nothing to report until it is dropped.
+    if (current.kind === "create") {
+      const [lo, hi] = current.anchor <= t ? [current.anchor, t] : [t, current.anchor];
+      onSelectDrag?.(new Date(lo), new Date(hi));
+    }
+  };
+  const isDragging = drag !== null;
+  // Whether any month drag is wired up at all, so the cells only take over touch
+  // scrolling and pointer tracking when one of the handlers can actually fire.
+  const dragWired = onCreateEvent != null || onSelectDrag != null || onDragEvent != null;
   useEffect(() => {
-    if (!isMoveArmed) return;
-    const onPointerMove = (e: PointerEvent) => {
-      if (movingRef.current?.active !== false) return;
-      const origin = moveOriginRef.current;
-      if (Math.abs(e.clientX - origin.x) + Math.abs(e.clientY - origin.y) < MOVE_THRESHOLD_PX)
-        return;
-      setMoving((m) => (m ? { ...m, active: true } : m));
-    };
+    if (!isDragging) return;
     const finish = () => {
-      const m = movingRef.current;
-      setMoving(null);
-      if (!m?.active) return;
-      // A drag that ends where it began is a no-op, but it must still swallow the
-      // click so the chip doesn't also report a press.
+      const current = dragRef.current;
+      setDrag(null);
+      if (!current || !movedRef.current) return;
       suppressClickRef.current = true;
-      const delta = differenceInCalendarDays(new Date(m.over), new Date(m.from));
-      if (delta === 0) return;
-      const next = shiftEventDays(m.event.start, m.event.end, delta);
-      onDragEvent?.(m.event, next.start, next.end);
+      if (current.kind === "create") {
+        const range = monthCreateRange(new Date(current.anchor), new Date(current.hover));
+        onCreateEvent?.(range.start, range.end);
+        return;
+      }
+      const next = monthDropBounds(current.event, new Date(current.from), new Date(current.to));
+      if (!next) return;
+      // Reject a drop that would land the event on top of another when
+      // `eventOverlap` is off, before the consumer's handler ever sees it.
+      if (
+        eventOverlap === false &&
+        overlapsOtherEvents(events ?? [], current.event, next.start, next.end)
+      ) {
+        return;
+      }
+      onDragEvent?.(current.event, next.start, next.end);
     };
-    window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", finish);
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", finish);
-    };
-  }, [isMoveArmed, onDragEvent]);
+    return () => window.removeEventListener("pointerup", finish);
+  }, [isDragging, onCreateEvent, onDragEvent, eventOverlap, events]);
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     let next: Date | null = null;
     if (e.key === "ArrowLeft") next = addDays(focusedDate, -1);
@@ -771,12 +781,6 @@ export function MonthView<T = unknown>({
         // Arrow-key roving applies whenever the day cells are a tab stop: the
         // picker always, events mode only when keyboardDayNavigation is set.
         onKeyDown={dayRoving ? onKeyDown : undefined}
-        // A drag that ends over a cell other than the one it started on produces no
-        // click, so the flag it armed would otherwise swallow the next real click.
-        // Capture phase, so it still runs when a chip stops its own pointerdown.
-        onPointerDownCapture={() => {
-          suppressClickRef.current = false;
-        }}
         {...slot("grid")}
       >
         {weeks.map((week, weekIndex) => {
@@ -845,10 +849,12 @@ export function MonthView<T = unknown>({
                 );
                 const dayTime = startOfDay(day.date).getTime();
                 const inCreate =
-                  creating != null &&
-                  dayTime >= Math.min(creating.anchor, creating.hover) &&
-                  dayTime <= Math.max(creating.anchor, creating.hover);
-                const isDropTarget = isMoving && moving?.over === dayTime;
+                  drag?.kind === "create" &&
+                  dayTime >= Math.min(drag.anchor, drag.hover) &&
+                  dayTime <= Math.max(drag.anchor, drag.hover);
+                // The day an event is about to land on (not the one it came from).
+                const isDropTarget =
+                  drag?.kind === "move" && dayTime === drag.to && drag.to !== drag.from;
                 // Present/absent data-* attributes so consumers can style day state
                 // with CSS/Tailwind variants (e.g. `data-[today]:bg-blue-500`).
                 const dayData = dataState({
@@ -859,7 +865,7 @@ export function MonthView<T = unknown>({
                   "data-outside": !day.isCurrentMonth,
                   "data-disabled": day.isDisabled,
                   "data-creating": inCreate,
-                  "data-dragover": isDropTarget,
+                  "data-drop": isDropTarget,
                 });
 
                 if (eventsMode) {
@@ -875,7 +881,13 @@ export function MonthView<T = unknown>({
                   const dayLabel = format(day.date, "d MMMM", locale ? { locale } : undefined);
                   const dayCellProps = slot(
                     "day",
-                    eventCellDefault(day, theme, cellHeight, highlightWeekends),
+                    eventCellDefault(
+                      day,
+                      theme,
+                      cellHeight,
+                      highlightWeekends,
+                      inCreate || isDropTarget,
+                    ),
                   );
                   return (
                     // Events mode: by default the cell is not a tab stop, so keyboard
@@ -892,47 +904,32 @@ export function MonthView<T = unknown>({
                       aria-disabled={day.isDisabled || undefined}
                       aria-label={label}
                       {...dayCellProps}
-                      // Drag-to-create and drag-to-move disable touch scroll on the
-                      // cell so a swipe sketches a span (or carries a chip) instead
-                      // of scrolling the grid.
+                      // Dragging disables touch scroll on the cell so a swipe
+                      // sketches a span (or carries an event) instead of scrolling
+                      // the grid, and stops the sweep from text-selecting the day
+                      // numbers and chip titles it passes over.
                       style={
-                        sweepEnabled || onDragEvent
-                          ? {
-                              ...dayCellProps.style,
-                              touchAction: "none",
-                              ...(isDropTarget
-                                ? {
-                                    outline: `2px solid ${theme.selectedBackground}`,
-                                    outlineOffset: -2,
-                                  }
-                                : null),
-                            }
+                        dragWired
+                          ? { ...dayCellProps.style, touchAction: "none", userSelect: "none" }
                           : dayCellProps.style
                       }
                       onPointerDown={
-                        sweepEnabled && !day.isDisabled
+                        dragWired && !day.isDisabled
                           ? (e) => {
-                              if (e.button === 0) beginCreate(day.date);
+                              if (e.button !== 0) return;
+                              beginPress();
+                              beginCreate(day.date);
                             }
                           : undefined
                       }
-                      onPointerEnter={
-                        sweepEnabled || onDragEvent
-                          ? () => {
-                              extendCreate(day.date);
-                              if (movingRef.current && !day.isDisabled) extendMove(day.date);
-                            }
-                          : undefined
-                      }
+                      onPointerEnter={dragWired ? () => extendDrag(day.date) : undefined}
                       onClick={
                         day.isDisabled
                           ? undefined
                           : () => {
-                              if (suppressClickRef.current) {
-                                suppressClickRef.current = false;
-                                return;
-                              }
+                              if (consumeSuppressedClick()) return;
                               onPressDay?.(day.date);
+                              onPressCell?.(startOfDay(day.date));
                             }
                       }
                       onKeyDown={
@@ -943,6 +940,7 @@ export function MonthView<T = unknown>({
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
                                 onPressDay?.(day.date);
+                                onPressCell?.(startOfDay(day.date));
                               }
                             }
                           : undefined
@@ -956,57 +954,30 @@ export function MonthView<T = unknown>({
                           overflowing right across the days they span. Rendered here
                           (not a row overlay) so each bar is valid content of its
                           start day's gridcell and reads with that day. Made
-                          non-interactive mid drag-create (and mid drag-move) so a
-                          sweep reaches the cells beneath. */}
+                          non-interactive mid drag so a sweep (or a move) reaches the
+                          cells beneath. */}
                       {barSegs
                         .filter((b) => b.startCol === dayCol)
                         .map((b) => {
                           const span = b.endCol - b.startCol + 1;
-                          const draggable = canDragEvent(b.seg.event);
-                          const isDragged = isMoving && moving?.event === b.seg.event;
+                          const isDragged = drag?.kind === "move" && drag.event === b.seg.event;
                           return (
                             <button
                               key={`bar-${b.seg.event.start.toISOString()}:${b.seg.event.title}:${b.seg.lane}`}
                               type="button"
                               onPointerDown={
-                                draggable
+                                canMove(b.seg.event)
                                   ? (e) => {
                                       if (e.button !== 0) return;
-                                      // A press on a chip picks the event up, so it
-                                      // must not also start a create sweep on the
-                                      // cell underneath.
                                       e.stopPropagation();
-                                      // A bar can span several days, so grab the day
-                                      // actually under the pointer rather than the
-                                      // bar's start day — the drop then shifts by
-                                      // what the user sees them move. An unmeasured
-                                      // bar falls back to its first day.
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      const col =
-                                        rect.width > 0
-                                          ? Math.min(
-                                              span - 1,
-                                              Math.max(
-                                                0,
-                                                Math.floor(
-                                                  (e.clientX - rect.left) / (rect.width / span),
-                                                ),
-                                              ),
-                                            )
-                                          : 0;
-                                      const grabbed = week.days[b.startCol + col];
-                                      if (grabbed) {
-                                        beginMove(b.seg.event, grabbed.date, e.clientX, e.clientY);
-                                      }
+                                      beginPress();
+                                      beginMove(b.seg.event, day.date);
                                     }
                                   : undefined
                               }
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (suppressClickRef.current) {
-                                  suppressClickRef.current = false;
-                                  return;
-                                }
+                                if (consumeSuppressedClick()) return;
                                 onPressEvent?.(b.seg.event);
                               }}
                               {...barChipButton}
@@ -1031,9 +1002,12 @@ export function MonthView<T = unknown>({
                                   CHIP_GAP +
                                   b.seg.lane * (CHIP_HEIGHT + CHIP_GAP),
                                 height: CHIP_HEIGHT,
-                                pointerEvents: isCreating || isMoving ? "none" : "auto",
-                                ...(draggable ? { touchAction: "none", cursor: "grab" } : null),
-                                ...(isDragged ? { opacity: 0.4 } : null),
+                                pointerEvents: isDragging ? "none" : "auto",
+                                // Fade the bar being carried, so the tinted drop
+                                // target reads as where it is going.
+                                opacity: isDragged ? DRAGGED_CHIP_OPACITY : undefined,
+                                cursor: canMove(b.seg.event) ? "grab" : undefined,
+                                touchAction: dragWired ? "none" : undefined,
                                 zIndex: 2,
                               }}
                             >
@@ -1189,7 +1163,14 @@ export function MonthView<T = unknown>({
                     aria-label={label}
                     aria-pressed={day.isSelected || day.isInRange}
                     {...slot("day", dayCellDefault(day, theme, highlightWeekends))}
-                    onClick={day.isDisabled ? undefined : () => onPressDay?.(day.date)}
+                    onClick={
+                      day.isDisabled
+                        ? undefined
+                        : () => {
+                            onPressDay?.(day.date);
+                            onPressCell?.(startOfDay(day.date));
+                          }
+                    }
                     onMouseEnter={day.isDisabled ? undefined : () => setHoveredKey(day.id)}
                     onMouseLeave={() => setHoveredKey((k) => (k === day.id ? null : k))}
                   >

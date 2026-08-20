@@ -5,8 +5,10 @@ description: Move, resize, reschedule across days, and create events by dragging
 ---
 
 Everything here is opt-in: pass the relevant handler and update your own event
-state in response. Most of it lives on the week/day grid; the month and year
-grids get their own day-granular versions, covered at the end.
+state in response. Move, resize, and create work on the week/day grid; move and
+create also work on the month grid (see [On the month grid](#on-the-month-grid)),
+where a drag moves an event by whole days rather than by time. The year grid
+sweeps out day ranges too (see [On the year grid](#on-the-year-grid)).
 
 ## Move and resize
 
@@ -175,19 +177,18 @@ in-progress sweep before it commits.
   "drag to create a range."
 </Note>
 
-## On the month and year grids
+## On the month grid
 
-The month and year grids work in whole days rather than minutes, so the same three
-handlers do day-granular versions of the gestures above. On a device you **hold and
-drag**; on the web you **press and drag**.
+The same two handlers work in `month` mode on both renderers. Nothing extra to
+enable: pass `onCreateEvent`, `onDragEvent`, or both.
 
-### Sweep out a span
+### Drag to create a day span
 
-`onCreateEvent` sketches an **all-day** span: start on an empty day and drag across
-others. `start` is midnight of the first day and `end` is midnight after the last
-(exclusive), which is the shape an all-day event wants. A plain tap still fires
-`onPressDay`, and each day in the sweep carries `data-creating` for styling (see
-[Styling](/guides/styling)).
+Press an empty day and drag across others to sketch an **all-day** span, then
+release. `start` is midnight of the first day and `end` is midnight after the last
+(exclusive). On native you **long-press** first, so a tap and a page swipe are
+never hijacked, and a stationary hold creates that single day; on web a plain
+click without dragging creates nothing and still fires `onPressDay`.
 
 ```tsx
 <Calendar
@@ -200,19 +201,17 @@ others. `start` is midnight of the first day and `end` is midnight after the las
 ```
 
 `onSelectDrag` reports the **same sweep** as it happens, with the ordered inclusive
-`[start, end]` days, so a selection highlight can follow the drag. Set either
-handler (or both) to enable the gesture — see
-[Date selection](/guides/selection) for wiring it to `useDateRange`.
+`[start, end]` days, so a selection highlight can follow the drag rather than
+appearing only on release. Set it, `onCreateEvent`, or both — either enables the
+gesture. See [Date selection](/guides/selection) for wiring it to `useDateRange`.
 
-On the year grid the sweep runs across a mini month's days on a device, and across
-mini months on the web.
+### Drag to reschedule
 
-### Move an event to another day
-
-In `month` mode, `onDragEvent` picks an event chip up and drops it on another day.
-The event shifts by whole days, keeping its **time of day and its duration**, so a
-9–10am standup dropped three days later is still 9–10am. Multi-day bars move as a
-whole, from wherever you grabbed them.
+Pick an event bar up and drop it on another day. Both ends shift by the same
+number of calendar days, so the **time of day and the duration are preserved**
+(a multi-day event keeps its length). Grab it with a **long-press** on native and
+a **press-drag** on web. The carried bar fades and the target day is tinted while
+you drag.
 
 ```tsx
 <Calendar
@@ -224,10 +223,43 @@ whole, from wherever you grabbed them.
 />
 ```
 
-`draggable: false`, `startEditable: false`, and `disabled: true` lock an event here
-exactly as they do on the time grid, and `onDragStart` fires on grab for haptics.
-The year view summarises events as dots rather than chips, so it has nothing to
-pick up: there is no drag-to-move there.
+Everything above applies here too: `draggable: false` and `startEditable: false`
+lock an event, `eventStartEditable={false}` locks the whole grid, returning
+`false` rejects a drop, and `eventOverlap={false}` rejects one that would land on
+top of another event. `onDragStart` fires on grab, for haptics. There is no resize
+on the month grid, so `durationEditable` has no effect there.
+
+### Styling the drag states
+
+Both states are tinted with the theme's `rangeBackground` token by default (see
+[Theming](/guides/theming)), and the bar being carried fades. On the dom renderer
+each day in a create sweep also carries `data-creating` and the day an event is
+about to land on carries `data-drop`, so you can restyle either (see
+[Styling](/guides/styling)); give the `day` slot a class to take the tint over
+entirely.
+
+## On the year grid
+
+The twelve mini months take the same sweep: `onSelectDrag` reports the ordered
+inclusive `[start, end]` days as you drag, and `onCreateEvent` reports the
+all-day range once on release. Hold a day and drag on a device, press and drag on
+the web. Days being swept carry `data-creating` on the dom renderer.
+
+```tsx
+<Calendar
+  mode="year"
+  /* ... */
+  selectedRange={range ?? undefined}
+  onSelectDrag={selectRange}
+  onCreateEvent={(start, end) =>
+    setEvents((prev) => [...prev, { id: makeId(), title: "Leave", start, end, allDay: true }])
+  }
+/>
+```
+
+On a device a sweep stays inside the mini month it started in; on the web it can
+carry on across months. The year view summarises events as dots rather than bars,
+so it has nothing to pick up: `onDragEvent` applies to `month` mode, not `year`.
 
 ## Tuning the snap
 

@@ -19,7 +19,7 @@ import {
   buildMonthWeeks,
   type DateRange,
   dayBadgeKind,
-  dayRangeFromDrag,
+  monthCreateRange,
   daySelectionState,
   getIsToday,
   filterHiddenDays,
@@ -202,7 +202,7 @@ function YearViewInner<T>({
     const current = sweepRef.current;
     setSweep(null);
     if (!current || !movedRef.current) return;
-    const range = dayRangeFromDrag(new Date(current.anchor), new Date(current.hover));
+    const range = monthCreateRange(new Date(current.anchor), new Date(current.hover));
     onCreateEvent?.(range.start, range.end);
   }, [onCreateEvent]);
 

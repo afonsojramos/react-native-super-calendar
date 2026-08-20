@@ -146,19 +146,23 @@ export interface CalendarProps<T = unknown>
   eventOverlap?: boolean;
   /** Snap dragged/created events to this many minutes. */
   dragStepMinutes?: number;
-  /** Tap empty grid space. */
+  /**
+   * Tap empty space: the date+time pressed on the week/day grid, or the tapped
+   * day at midnight in `month` mode (where it fires alongside `onPressDay`).
+   */
   onPressCell?: (date: Date) => void;
   /**
-   * Drag to create: empty grid space on the time-grid modes (a time range), or
-   * across day cells in month and year modes (an all-day span, `end` exclusive).
+   * Drag empty space to create. On the week/day grid that sweeps out a time
+   * range; in `month` mode it sweeps out an **all-day** span across the days
+   * dragged (`start` at midnight of the first, `end` at midnight after the last).
    */
   onCreateEvent?: (start: Date, end: Date) => void;
   /** Fires when an event drag begins. */
   onDragStart?: (event: CalendarEvent<T>) => void;
   /**
-   * Enables drag-to-move/resize on the time grid, and drag-a-chip-to-another-day
-   * in month mode (which shifts the event by whole days and keeps its time).
-   * Return `false` to reject the drop.
+   * Enables drag-to-move/resize; return `false` to reject the drop. In `month`
+   * mode an event chip can be dragged onto another day, shifting both ends by the
+   * days dragged so the time of day and duration are kept.
    */
   onDragEvent?: (event: CalendarEvent<T>, start: Date, end: Date) => void | boolean;
   /** Tap a day's column header. */
@@ -180,6 +184,11 @@ export interface CalendarProps<T = unknown>
   moreLabel?: string;
   /** Render neighbouring months' days in the leading/trailing cells (default true). */
   showAdjacentMonths?: boolean;
+  /**
+   * Render the built-in "Month yyyy" title above the month grid. Default true. Set
+   * false when your own header already shows the month and year. Month mode only.
+   */
+  showTitle?: boolean;
   /** Weekday header label width: `narrow` ("M"), `short` ("Mon", default), or `long` ("Monday"). */
   weekdayFormat?: WeekdayFormat;
   /** Fill the cell with the range background instead of the pill band. */
@@ -197,11 +206,10 @@ export interface CalendarProps<T = unknown>
   /** Tap a day cell. */
   onPressDay?: (date: Date) => void;
   /**
-   * Enables drag-to-select in month and year modes: press a day and drag across
-   * others to sweep out a range. Fires live with the ordered inclusive
-   * `[start, end]` days, so the highlight follows the drag — pair it with
-   * `useDateRange`'s `selectRange` to drive `selectedRange`. `onCreateEvent` (when
-   * also set) fires once on release for the same sweep.
+   * Month and year modes: reports a create sweep's day span as it happens, as the
+   * ordered inclusive `[start, end]` days, so a selection highlight can follow the
+   * drag — pair it with `useDateRange`'s `selectRange`. Enables the sweep on its
+   * own, so it works without `onCreateEvent`.
    */
   onSelectDrag?: (start: Date, end: Date) => void;
   /** Tap a month's title in the year view — e.g. jump to that month. */
@@ -324,6 +332,7 @@ export function Calendar<T = unknown>({
   maxVisibleEventCount,
   moreLabel,
   showAdjacentMonths,
+  showTitle,
   weekdayFormat,
   fillCellOnSelection,
   selectedRange,
@@ -435,6 +444,7 @@ export function Calendar<T = unknown>({
         maxVisibleEventCount={maxVisibleEventCount}
         moreLabel={moreLabel}
         showAdjacentMonths={showAdjacentMonths}
+        showTitle={showTitle}
         fillCellOnSelection={fillCellOnSelection}
         selectedRange={selectedRange}
         selectedDates={selectedDates}
@@ -443,9 +453,13 @@ export function Calendar<T = unknown>({
         isDateDisabled={isDateDisabled}
         keyboardDayNavigation={keyboardDayNavigation}
         onPressDay={onPressDay}
+        onPressCell={onPressCell}
         onCreateEvent={onCreateEvent}
         onSelectDrag={onSelectDrag}
         onDragEvent={onDragEvent}
+        onDragStart={onDragStart}
+        eventStartEditable={eventStartEditable}
+        eventOverlap={eventOverlap}
         onPressEvent={onPressEvent}
         onPressMore={onPressMore}
         renderEvent={renderMonthEvent}

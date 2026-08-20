@@ -1,12 +1,12 @@
 import type { CalendarEvent } from "../../types";
 import {
   cellRangeFromDrag,
-  dayRangeFromDrag,
   eventsOverlap,
+  monthCreateRange,
+  monthDropBounds,
   overlapsOtherEvents,
   pageStepDays,
   resolveDraggedBounds,
-  shiftEventDays,
   shiftMinutes,
   snapDeltaMinutes,
 } from "../drag";
@@ -215,57 +215,57 @@ describe("cellRangeFromDrag", () => {
   });
 });
 
-describe("dayRangeFromDrag", () => {
-  it("spans the whole first day when the sweep never leaves it", () => {
-    const day = new Date(2026, 6, 15, 14, 30);
-    const range = dayRangeFromDrag(day, day);
-    expect(range.start).toEqual(new Date(2026, 6, 15));
-    expect(range.end).toEqual(new Date(2026, 6, 16));
+describe("monthCreateRange", () => {
+  it("spans the swept days, ending at midnight after the last", () => {
+    const range = monthCreateRange(new Date(2026, 6, 6, 13, 30), new Date(2026, 6, 8, 4));
+    expect(range.start).toEqual(new Date(2026, 6, 6));
+    expect(range.end).toEqual(new Date(2026, 6, 9));
   });
 
-  it("covers every swept day, with an exclusive end at the next midnight", () => {
-    const range = dayRangeFromDrag(new Date(2026, 6, 15), new Date(2026, 6, 17));
-    expect(range.start).toEqual(new Date(2026, 6, 15));
-    expect(range.end).toEqual(new Date(2026, 6, 18));
+  it("orders a backwards sweep the same way", () => {
+    const forward = monthCreateRange(new Date(2026, 6, 6), new Date(2026, 6, 8));
+    const backward = monthCreateRange(new Date(2026, 6, 8), new Date(2026, 6, 6));
+    expect(backward).toEqual(forward);
   });
 
-  it("orders a backwards sweep", () => {
-    const range = dayRangeFromDrag(new Date(2026, 6, 17), new Date(2026, 6, 15));
-    expect(range.start).toEqual(new Date(2026, 6, 15));
-    expect(range.end).toEqual(new Date(2026, 6, 18));
-  });
-
-  it("normalises both ends to midnight", () => {
-    const range = dayRangeFromDrag(new Date(2026, 6, 15, 23, 59), new Date(2026, 6, 16, 8, 15));
-    expect(range.start).toEqual(new Date(2026, 6, 15));
-    expect(range.end).toEqual(new Date(2026, 6, 17));
+  it("yields a single whole day when the sweep never leaves its cell", () => {
+    const range = monthCreateRange(new Date(2026, 6, 6, 9), new Date(2026, 6, 6, 17));
+    expect(range.start).toEqual(new Date(2026, 6, 6));
+    expect(range.end).toEqual(new Date(2026, 6, 7));
   });
 });
 
-describe("shiftEventDays", () => {
-  it("moves both ends by whole days, keeping the time of day", () => {
-    const next = shiftEventDays(new Date(2026, 6, 15, 9, 30), new Date(2026, 6, 15, 10, 45), 3);
-    expect(next.start).toEqual(new Date(2026, 6, 18, 9, 30));
-    expect(next.end).toEqual(new Date(2026, 6, 18, 10, 45));
+describe("monthDropBounds", () => {
+  const event: CalendarEvent = {
+    title: "Standup",
+    start: new Date(2026, 6, 6, 9, 30),
+    end: new Date(2026, 6, 6, 10, 15),
+  };
+
+  it("shifts both ends by the days dragged, keeping the time of day", () => {
+    const next = monthDropBounds(event, new Date(2026, 6, 6), new Date(2026, 6, 9));
+    expect(next?.start).toEqual(new Date(2026, 6, 9, 9, 30));
+    expect(next?.end).toEqual(new Date(2026, 6, 9, 10, 15));
   });
 
-  it("moves backwards for a negative delta", () => {
-    const next = shiftEventDays(new Date(2026, 6, 15, 9), new Date(2026, 6, 15, 10), -2);
-    expect(next.start).toEqual(new Date(2026, 6, 13, 9));
-    expect(next.end).toEqual(new Date(2026, 6, 13, 10));
+  it("moves backwards and across a month boundary", () => {
+    const next = monthDropBounds(event, new Date(2026, 6, 6), new Date(2026, 5, 30));
+    expect(next?.start).toEqual(new Date(2026, 5, 30, 9, 30));
+    expect(next?.end).toEqual(new Date(2026, 5, 30, 10, 15));
   });
 
-  it("keeps a multi-day event's span", () => {
-    const next = shiftEventDays(new Date(2026, 6, 15), new Date(2026, 6, 18), 1);
-    expect(next.start).toEqual(new Date(2026, 6, 16));
-    expect(next.end).toEqual(new Date(2026, 6, 19));
+  it("keeps a multi-day event's duration", () => {
+    const trip: CalendarEvent = {
+      title: "Trip",
+      start: new Date(2026, 6, 6, 8),
+      end: new Date(2026, 6, 10, 20),
+    };
+    const next = monthDropBounds(trip, new Date(2026, 6, 8), new Date(2026, 6, 10));
+    expect(next?.start).toEqual(new Date(2026, 6, 8, 8));
+    expect(next?.end).toEqual(new Date(2026, 6, 12, 20));
   });
 
-  it("is a no-op for a zero delta", () => {
-    const start = new Date(2026, 6, 15, 9);
-    const end = new Date(2026, 6, 15, 10);
-    const next = shiftEventDays(start, end, 0);
-    expect(next.start).toEqual(start);
-    expect(next.end).toEqual(end);
+  it("returns null when the drop lands on the day it started", () => {
+    expect(monthDropBounds(event, new Date(2026, 6, 6, 1), new Date(2026, 6, 6, 23))).toBeNull();
   });
 });

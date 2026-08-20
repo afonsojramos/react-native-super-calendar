@@ -8,7 +8,7 @@ import {
   type DateRange,
   type DateSelectionConstraints,
   dayBadgeKind,
-  dayRangeFromDrag,
+  monthCreateRange,
   daySelectionState,
   getIsToday,
   filterHiddenDays,
@@ -158,7 +158,7 @@ export function YearView<T = unknown>({
       setCreating(null);
       if (!c || !movedRef.current) return;
       suppressClickRef.current = true;
-      const range = dayRangeFromDrag(new Date(c.anchor), new Date(c.hover));
+      const range = monthCreateRange(new Date(c.anchor), new Date(c.hover));
       onCreateEvent?.(range.start, range.end);
     };
     window.addEventListener("pointerup", finish);

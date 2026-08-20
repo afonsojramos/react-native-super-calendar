@@ -26,6 +26,25 @@ export type {
   WeekStartsOn,
 } from "@super-calendar/core";
 
+/**
+ * Called when an event is dragged (moved or resized) to new start/end times.
+ * Return `false` to reject the drop — the event snaps back to where it started
+ * (e.g. to forbid overlaps or out-of-bounds slots). Any other return accepts it.
+ */
+export type EventDragHandler<T> = (
+  event: CalendarEvent<T>,
+  start: Date,
+  end: Date,
+) => void | boolean;
+
+/**
+ * Called when a move or resize gesture begins, before any change is committed:
+ * on grab for a move (after the long-press), and when the resize drag starts.
+ * Handy for haptic feedback (e.g. `expo-haptics`). Requires drag to be enabled
+ * via `onDragEvent`.
+ */
+export type EventDragStartHandler<T> = (event: CalendarEvent<T>) => void;
+
 // The React Native render contract lives here, not in core: it references
 // Reanimated (`SharedValue`) and React Native (`ViewStyle`) types, which must
 // not leak into the platform-free core.

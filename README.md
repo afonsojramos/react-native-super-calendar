@@ -88,6 +88,7 @@ partial-weeks) / **agenda (`schedule`)** modes, **all-day events** (lane +
 `minHour`/`maxHour`, `ampm` (hour axis and event times), `showTime`, `timeslots`,
 `hideHours`, `showWeekNumber`, `weekNumberPrefix`, `hourComponent`,
 `sortedMonthView`, `moreLabel`, `showAdjacentMonths`, `showSixWeeks`,
+`showTitle` (hide the built-in month label when your own header shows it),
 `disableMonthEventCellPress`, a default month weekday header
 (`renderHeaderForMonthView`), a custom month date badge
 (`renderCustomDateForMonth`), `activeDate`, per-event
@@ -361,15 +362,22 @@ cancels an in-progress sweep before it commits.
 />
 ```
 
-**On the month and year grids.** The same three handlers work in whole days there.
-**Hold an empty day and drag** across others (press and drag on web) to sweep a
-span: `onSelectDrag` reports it live as the ordered inclusive `[start, end]` days
-(pair it with `useDateRange`'s `selectRange`), and `onCreateEvent` reports it once
-on release as an all-day range (`end` is midnight after the last day). In `month`
-mode, **hold an event chip** and drop it on another day and `onDragEvent` fires
-with the event shifted by whole days, keeping its time of day and duration;
-`draggable: false` / `startEditable` / `disabled` lock it as on the time grid. The
-year view shows dots rather than chips, so it has nothing to pick up.
+**On the month grid.** Both handlers also work in `mode="month"`, on both
+renderers. `onCreateEvent` sweeps across day cells to create an **all-day** span
+(`start` at midnight of the first day, `end` at midnight after the last), and
+`onDragEvent` drops an event bar on another day, shifting both ends by the days
+dragged so the **time of day and duration are preserved**. Grab with a
+**long-press** on native, a **press-drag** on web. The same locks apply
+(`draggable`, `startEditable`, `eventStartEditable`, `eventOverlap`, and
+returning `false` to reject); there is no resize on the month grid.
+
+**On the year grid.** The mini months take the same sweep: `onSelectDrag` reports
+the ordered inclusive `[start, end]` days as you drag (pair it with
+`useDateRange`'s `selectRange`), and `onCreateEvent` reports the all-day range
+once on release. `onSelectDrag` works on the month grid too, so a selection
+highlight can follow a sweep instead of appearing only on release. The year view
+shows dots rather than bars, so it has nothing to pick up: `onDragEvent` is
+month-mode only.
 
 ```tsx
 <Calendar
@@ -378,7 +386,7 @@ year view shows dots rather than chips, so it has nothing to pick up.
   selectedRange={range ?? undefined}
   onSelectDrag={selectRange}
   onCreateEvent={(start, end) =>
-    setEvents((prev) => [...prev, { id: makeId(), title: "Leave", start, end, allDay: true }])
+    setEvents((prev) => [...prev, { id: makeId(), title: "New", start, end, allDay: true }])
   }
   onDragEvent={(event, start, end) =>
     setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, start, end } : e)))
@@ -620,6 +628,8 @@ paging follows the system scroll direction — so enable React Native's
 - `ampm` switches hour labels to 12-hour AM/PM (default 24h).
 - `onPressCell(date)` fires when empty grid space is tapped, with the date+time
   under the touch — handy for "create event". (Event taps still go to `onPressEvent`.)
+  In `month` mode it fires for a day cell too, with that day at midnight, so one
+  handler covers every view; `onPressDay` still fires alongside it for drill-down.
 - **Long-press** mirrors every tap: `onLongPressEvent(event)`, `onLongPressCell(date)`
   (week/day), and `onLongPressDay(date)` (month). All optional.
 - **All-day events** render in a lane above the time grid (and as chips or

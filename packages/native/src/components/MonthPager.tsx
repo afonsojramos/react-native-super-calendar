@@ -17,7 +17,14 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useCalendarTheme } from "../theme";
-import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from "../types";
+import type {
+  CalendarEvent,
+  EventDragHandler,
+  EventDragStartHandler,
+  EventKeyExtractor,
+  RenderEvent,
+  WeekStartsOn,
+} from "../types";
 import {
   type CalendarSelection,
   CalendarSelectionProvider,
@@ -60,6 +67,20 @@ export type MonthPagerProps<T> = {
   highlightWeekends?: boolean;
   disableMonthEventCellPress?: boolean;
   isRTL?: boolean;
+  calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
+  renderEvent: RenderEvent<T>;
+  keyExtractor: EventKeyExtractor<T>;
+  onPressDay?: (date: Date) => void;
+  onLongPressDay?: (date: Date) => void;
+  /** Tap an empty day cell; receives the day at midnight. */
+  onPressCell?: (date: Date) => void;
+  onPressEvent: (event: CalendarEvent<T>) => void;
+  onLongPressEvent?: (event: CalendarEvent<T>) => void;
+  onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
+  /** Drag across empty day cells to sweep out an all-day span for a new event. */
+  onCreateEvent?: (start: Date, end: Date) => void;
+  /** Drag-to-select: reports the swept `[start, end]` days live. */
+  onSelectDrag?: (start: Date, end: Date) => void;
   /** Days drawn as selected (a filled badge). */
   selectedDates?: Date[];
   /** A selected span: endpoints get a filled badge, the span gets the range band. */
@@ -72,26 +93,20 @@ export type MonthPagerProps<T> = {
   maxDate?: Date;
   /** Return true to render a specific day disabled (dimmed, taps ignored). */
   isDateDisabled?: (date: Date) => boolean;
-  calendarCellStyle?: (date: Date) => StyleProp<ViewStyle>;
-  renderEvent: RenderEvent<T>;
-  keyExtractor: EventKeyExtractor<T>;
-  onPressDay?: (date: Date) => void;
-  onLongPressDay?: (date: Date) => void;
-  onPressEvent: (event: CalendarEvent<T>) => void;
-  onLongPressEvent?: (event: CalendarEvent<T>) => void;
-  onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
-  /** Drag-to-select: reports the swept `[start, end]` days live. */
-  onSelectDrag?: (start: Date, end: Date) => void;
-  /** Drag-to-create: reports the swept all-day range on release. */
-  onCreateEvent?: (start: Date, end: Date) => void;
-  /** Drag-to-move: reports an event's new bounds after it is dropped on another day. */
-  onDragEvent?: (event: CalendarEvent<T>, start: Date, end: Date) => void | boolean;
-  /** Fired when a drag-to-move gesture picks an event up. */
-  onDragStart?: (event: CalendarEvent<T>) => void;
+  /** Drag an event bar onto another day to reschedule it. */
+  onDragEvent?: EventDragHandler<T>;
+  /** Fired when a month drag picks an event up, before anything is committed. */
+  onDragStart?: EventDragStartHandler<T>;
+  /** Allow moving events by default (per-event `startEditable` overrides). Default true. */
+  eventStartEditable?: boolean;
+  /** Reject a drop that would overlap another event (default true = allowed). */
+  eventOverlap?: boolean;
   onChangeDate: (date: Date) => void;
   freeSwipe?: boolean;
   swipeEnabled?: boolean;
   showSixWeeks?: boolean;
+  /** Render the "MMMM yyyy" title above the weekday header. Default true. */
+  showTitle?: boolean;
   activeDate?: Date;
   /** Replace the weekday-label header above the month grid. Receives the week's days. */
   renderHeaderForMonthView?: (weekDays: Date[]) => React.ReactNode;
@@ -113,28 +128,32 @@ function MonthPagerInner<T>({
   highlightWeekends,
   disableMonthEventCellPress,
   isRTL,
+  calendarCellStyle,
+  renderEvent,
+  keyExtractor,
+  onPressDay,
+  onLongPressDay,
+  onPressCell,
+  onPressEvent,
+  onLongPressEvent,
+  onPressMore,
+  onCreateEvent,
+  onSelectDrag,
   selectedDates,
   selectedRange,
   fillCellOnSelection,
   minDate,
   maxDate,
   isDateDisabled,
-  calendarCellStyle,
-  renderEvent,
-  keyExtractor,
-  onPressDay,
-  onLongPressDay,
-  onPressEvent,
-  onLongPressEvent,
-  onPressMore,
-  onSelectDrag,
-  onCreateEvent,
   onDragEvent,
   onDragStart,
+  eventStartEditable,
+  eventOverlap,
   onChangeDate,
   freeSwipe = false,
   swipeEnabled = true,
   showSixWeeks = false,
+  showTitle = true,
   activeDate,
   renderHeaderForMonthView,
   renderCustomDateForMonth,
@@ -299,19 +318,22 @@ function MonthPagerInner<T>({
           isRTL={isRTL}
           showSixWeeks={showSixWeeks}
           activeDate={activeDate}
-          fillCellOnSelection={fillCellOnSelection}
           calendarCellStyle={calendarCellStyle}
           renderEvent={renderEvent}
           keyExtractor={keyExtractor}
           onPressDay={onPressDay}
           onLongPressDay={onLongPressDay}
+          onPressCell={onPressCell}
           onPressEvent={onPressEvent}
           onLongPressEvent={onLongPressEvent}
           onPressMore={onPressMore}
-          onSelectDrag={onSelectDrag}
           onCreateEvent={onCreateEvent}
+          onSelectDrag={onSelectDrag}
+          fillCellOnSelection={fillCellOnSelection}
           onDragEvent={onDragEvent}
           onDragStart={onDragStart}
+          eventStartEditable={eventStartEditable}
+          eventOverlap={eventOverlap}
           renderCustomDateForMonth={renderCustomDateForMonth}
           classNames={classNames}
           styles={styleOverrides}
@@ -334,19 +356,22 @@ function MonthPagerInner<T>({
       isRTL,
       showSixWeeks,
       activeDate,
-      fillCellOnSelection,
       calendarCellStyle,
       renderEvent,
       keyExtractor,
       onPressDay,
       onLongPressDay,
+      onPressCell,
       onPressEvent,
       onLongPressEvent,
       onPressMore,
-      onSelectDrag,
       onCreateEvent,
+      onSelectDrag,
+      fillCellOnSelection,
       onDragEvent,
       onDragStart,
+      eventStartEditable,
+      eventOverlap,
       renderCustomDateForMonth,
       classNames,
       styleOverrides,
@@ -358,15 +383,17 @@ function MonthPagerInner<T>({
       <View ref={containerRef} style={[styles.container, theme.containers.monthContainer]}>
         {/* The active month's title, above the (shared) weekday header — mirrors the
           dom MonthView's title. The grids below omit their own title/weekdays. */}
-        <Text
-          {...slot<TextStyle>("title", {
-            base: styles.monthTitle,
-            themed: [theme.text.monthTitle, { color: theme.colors.text }],
-          })}
-          allowFontScaling={false}
-        >
-          {format(date, "MMMM yyyy", locale ? { locale } : undefined)}
-        </Text>
+        {showTitle ? (
+          <Text
+            {...slot<TextStyle>("title", {
+              base: styles.monthTitle,
+              themed: [theme.text.monthTitle, { color: theme.colors.text }],
+            })}
+            allowFontScaling={false}
+          >
+            {format(date, "MMMM yyyy", locale ? { locale } : undefined)}
+          </Text>
+        ) : null}
         {renderHeaderForMonthView ? (
           renderHeaderForMonthView(weekDays)
         ) : (
