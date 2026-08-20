@@ -1,10 +1,11 @@
 import { format, type Locale, isSameMonth, startOfDay } from "date-fns";
-import { memo, type ReactElement, useMemo, useState } from "react";
+import { memo, type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type DimensionValue,
   type LayoutChangeEvent,
   Modal,
   Platform,
+  type PointerEvent as RNPointerEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,12 +16,20 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 // Web drag-to-select relays cell pointer events up to MonthList; native drag is
 // driven by a list-level pan there instead.
 const isWeb = Platform.OS === "web";
 import { useCalendarTheme } from "../theme";
-import type { CalendarEvent, EventKeyExtractor, RenderEvent, WeekStartsOn } from "../types";
+import type {
+  CalendarEvent,
+  EventDragHandler,
+  EventDragStartHandler,
+  EventKeyExtractor,
+  RenderEvent,
+  WeekStartsOn,
+} from "../types";
 import { createSlots, type SlotStyleProps } from "../utils/slots";
 import { withEventAccessibilityLabel } from "../utils/withEventAccessibilityLabel";
 import {
@@ -28,6 +37,7 @@ import {
   type EventAccessibilityLabeler,
   type WeekdayFormat,
   daySelectionState,
+  isDateSelectable,
   useCalendarSelection,
   weekdayFormatToken,
 } from "@super-calendar/core";
@@ -42,6 +52,7 @@ import {
 } from "@super-calendar/core";
 import { monthEventCapacity, monthVisibleCount } from "@super-calendar/core";
 import { layoutMonthWeek, type MonthWeekEvents } from "@super-calendar/core";
+import { monthCreateRange, monthDropBounds, overlapsOtherEvents } from "@super-calendar/core";
 import {
   compareDayEvents,
   groupEventsByDay,
@@ -65,6 +76,12 @@ const EMPTY_LAYOUT = { segments: [], laneCount: 0 } as const;
 const CHIP_INSET_H = 4;
 // Pre-measure fallback so the first paint isn't empty or overflowing.
 const FALLBACK_VISIBLE_COUNT = 3;
+// Hold this long to start a month drag. Shorter than TouchableOpacity's own
+// 500ms long-press so the pan wins the race and the cell's `onLongPressDay`
+// doesn't also fire.
+const DRAG_LONG_PRESS_MS = 400;
+// Opacity of an event bar while it is being dragged to another day.
+const DRAGGED_BAR_OPACITY = 0.4;
 
 const numericStyle = (value: number | string | undefined, fallback: number) =>
   typeof value === "number" ? value : fallback;
@@ -91,6 +108,21 @@ function collectRowEvents<T>(
 }
 
 const pct = (n: number): DimensionValue => `${n}%` as DimensionValue;
+
+// An in-progress month drag: either a day span being swept out for a new event,
+// or an existing event being carried to another day.
+type MonthDrag<T> =
+  | { kind: "create"; anchor: Date; hover: Date }
+  | { kind: "move"; event: CalendarEvent<T>; from: Date; to: Date };
+
+// True when `day` falls inside the span swept out so far (either direction).
+function isInCreateSpan<T>(drag: MonthDrag<T> | null, day: Date): boolean {
+  if (drag?.kind !== "create") return false;
+  const time = startOfDay(day).getTime();
+  const a = startOfDay(drag.anchor).getTime();
+  const b = startOfDay(drag.hover).getTime();
+  return time >= Math.min(a, b) && time <= Math.max(a, b);
+}
 
 /**
  * The styleable parts of {@link MonthView}. Mirrors the dom renderer's slot
@@ -182,9 +214,39 @@ export type MonthViewProps<T> = SlotStyleProps<MonthViewSlot> & {
   keyExtractor: EventKeyExtractor<T>;
   onPressDay?: (date: Date) => void;
   onLongPressDay?: (date: Date) => void;
+  /**
+   * Tap an empty day cell. Fires alongside `onPressDay` with the same day at
+   * midnight, so one handler can create events across month and week/day modes.
+   */
+  onPressCell?: (date: Date) => void;
   onPressEvent: (event: CalendarEvent<T>) => void;
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
   onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
+  /**
+   * Enable drag-to-create: **long-press an empty day** and sweep across others
+   * (**press and drag** on the web), then release to fire this with the **all-day**
+   * range — `start` at midnight of the first day, `end` at midnight after the last
+   * (exclusive). A sweep that never leaves its day still yields that one day. A
+   * plain tap fires `onPressDay`/`onPressCell` instead.
+   */
+  onCreateEvent?: (start: Date, end: Date) => void;
+  /**
+   * Enable drag-to-reschedule: **long-press an event bar** and drag it onto
+   * another day (**press and drag** on the web). Called on release with the event
+   * and its new `start`/`end`, both shifted by the whole days dragged, so the time
+   * of day and duration are preserved. Return `false` to reject the drop. Update
+   * your own event state in response.
+   */
+  onDragEvent?: EventDragHandler<T>;
+  /**
+   * Fired the instant an event is picked up for a month drag, before anything is
+   * committed. Use it for haptic feedback. Inert unless `onDragEvent` is also set.
+   */
+  onDragStart?: EventDragStartHandler<T>;
+  /** Allow moving events by default (per-event `startEditable` overrides). Default true. */
+  eventStartEditable?: boolean;
+  /** Reject a drop that would overlap another event (default true = allowed). */
+  eventOverlap?: boolean;
   /**
    * Replace the default date badge in each day cell. Receives the day; return
    * your own date label. Event chips and the "+N more" label still render below.
@@ -222,9 +284,15 @@ function MonthViewInner<T>({
   keyExtractor,
   onPressDay,
   onLongPressDay,
+  onPressCell,
   onPressEvent,
   onLongPressEvent,
   onPressMore,
+  onCreateEvent,
+  onDragEvent,
+  onDragStart,
+  eventStartEditable = true,
+  eventOverlap = true,
   renderCustomDateForMonth,
   onDayPointerDown,
   onDayPointerEnter,
@@ -246,8 +314,10 @@ function MonthViewInner<T>({
     () => withEventAccessibilityLabel(renderEvent, eventAccessibilityLabel, false),
     [renderEvent, eventAccessibilityLabel],
   );
-  // Measured grid height, used to auto-fit the event chips per cell.
-  const [gridHeight, setGridHeight] = useState(0);
+  // Measured grid box: the height auto-fits the event chips per cell, and both
+  // dimensions map a drag's position onto a day cell.
+  const [gridSize, setGridSize] = useState({ width: 0, height: 0 });
+  const gridHeight = gridSize.height;
   // Web-only hover highlight on the day badge (mouse pointers); stays null on
   // touch/native, so it never re-renders there. Mirrors the dom renderer.
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
@@ -326,6 +396,192 @@ function MonthViewInner<T>({
     [showGrid, weeks, eventsByDay],
   );
 
+  // ---- drag to create a day span / reschedule an event ----------------------
+  const dragEnabled = onCreateEvent != null || onDragEvent != null;
+  const gridRef = useRef<View>(null);
+  // The live drag drives the preview; the ref is what the gesture and the web
+  // pointer listeners read, so neither has to be rebuilt as the hover day moves
+  // (rebuilding the gesture mid-drag would cancel it).
+  const [drag, setDrag] = useState<MonthDrag<T> | null>(null);
+  const dragRef = useRef<MonthDrag<T> | null>(null);
+  // Whether the pointer has reached a different day than it started on. The web
+  // has no long-press to disambiguate, so a create only commits once it moves.
+  const movedRef = useRef(false);
+  // Web only: a committed drag has to swallow the click the browser fires next,
+  // so a reschedule doesn't also open the day (or the event) it landed on.
+  const suppressPressRef = useRef(false);
+
+  const applyDrag = useCallback((next: MonthDrag<T> | null) => {
+    dragRef.current = next;
+    setDrag(next);
+  }, []);
+
+  // True when this press is the click trailing a just-committed web drag, which
+  // the caller should swallow. Clears the flag so only that one press is eaten.
+  const consumeSuppressedPress = useCallback(() => {
+    if (!suppressPressRef.current) return false;
+    suppressPressRef.current = false;
+    return true;
+  }, []);
+
+  // `disabled` and `draggable: false` lock an event outright; `startEditable`
+  // (per event, falling back to the grid default) allows or blocks a move.
+  const canMoveEvent = useCallback(
+    (event: CalendarEvent<T>) =>
+      !event.disabled && event.draggable !== false && (event.startEditable ?? eventStartEditable),
+    [eventStartEditable],
+  );
+
+  // The day under a grid-relative point, plus the event bar drawn there (if any).
+  // Returns null for a point on a blanked adjacent-month cell or an unselectable
+  // day, so neither can be a drag's origin or its drop target.
+  const hitTest = useCallback(
+    (x: number, y: number): { day: Date; event: CalendarEvent<T> | null } | null => {
+      const { width, height } = gridSize;
+      if (width <= 0 || height <= 0 || weeks.length === 0) return null;
+      const rowHeight = height / weeks.length;
+      const row = Math.min(weeks.length - 1, Math.max(0, Math.floor(y / rowHeight)));
+      const cols = weeks[row].length;
+      const col = Math.min(cols - 1, Math.max(0, Math.floor(x / (width / cols))));
+      const day = weeks[row][col];
+      if (!day) return null;
+      if (!showAdjacentMonths && !isSameMonth(day, date)) return null;
+      if (!isDateSelectable(day, { minDate, maxDate, isDateDisabled })) return null;
+      // Which lane row the point lands on, mirroring the bar overlay's geometry.
+      const rowLayout = weekLayouts[row] ?? EMPTY_LAYOUT;
+      const lane = Math.floor((y - row * rowHeight - BADGE_AREA) / chipMetrics.chipRowHeight);
+      const visibleLanes = monthVisibleCount(rowLayout.laneCount, capacity);
+      const segment =
+        lane >= 0 && lane < visibleLanes
+          ? rowLayout.segments.find((s) => s.lane === lane && s.startCol <= col && s.endCol >= col)
+          : undefined;
+      return { day, event: segment?.event ?? null };
+    },
+    [
+      gridSize,
+      weeks,
+      weekLayouts,
+      capacity,
+      chipMetrics,
+      showAdjacentMonths,
+      date,
+      minDate,
+      maxDate,
+      isDateDisabled,
+    ],
+  );
+
+  const beginDrag = useCallback(
+    (x: number, y: number) => {
+      // A fresh press starts a new interaction, so any guard left over from the
+      // previous one (a drag whose trailing click never reached a cell) is stale.
+      suppressPressRef.current = false;
+      movedRef.current = false;
+      const hit = hitTest(x, y);
+      if (!hit) return;
+      if (hit.event) {
+        if (!onDragEvent || !canMoveEvent(hit.event)) return;
+        applyDrag({ kind: "move", event: hit.event, from: hit.day, to: hit.day });
+        onDragStart?.(hit.event);
+        return;
+      }
+      if (onCreateEvent) applyDrag({ kind: "create", anchor: hit.day, hover: hit.day });
+    },
+    [hitTest, onDragEvent, onCreateEvent, onDragStart, canMoveEvent, applyDrag],
+  );
+
+  const extendDrag = useCallback(
+    (x: number, y: number) => {
+      const current = dragRef.current;
+      if (!current) return;
+      const hit = hitTest(x, y);
+      if (!hit) return;
+      const previous = current.kind === "create" ? current.hover : current.to;
+      if (startOfDay(hit.day).getTime() === startOfDay(previous).getTime()) return;
+      movedRef.current = true;
+      applyDrag(
+        current.kind === "create" ? { ...current, hover: hit.day } : { ...current, to: hit.day },
+      );
+    },
+    [hitTest, applyDrag],
+  );
+
+  const endDrag = useCallback(() => {
+    const current = dragRef.current;
+    applyDrag(null);
+    if (!current) return;
+    if (isWeb) suppressPressRef.current = movedRef.current;
+    if (current.kind === "create") {
+      // A stationary hold is a deliberate one-day create on native, where the
+      // gesture only starts after a long press; on the web it is just a click.
+      if (isWeb && !movedRef.current) return;
+      const range = monthCreateRange(current.anchor, current.hover);
+      onCreateEvent?.(range.start, range.end);
+      return;
+    }
+    const next = monthDropBounds(current.event, current.from, current.to);
+    if (!next) return;
+    // Reject a drop that would land the event on top of another when
+    // `eventOverlap` is off, before the consumer's handler ever sees it.
+    if (
+      eventOverlap === false &&
+      overlapsOtherEvents(events, current.event, next.start, next.end)
+    ) {
+      return;
+    }
+    onDragEvent?.(current.event, next.start, next.end);
+  }, [applyDrag, onCreateEvent, onDragEvent, eventOverlap, events]);
+
+  // Native: a pan over the grid, held first so it doesn't hijack a tap or the
+  // pager's own horizontal swipe.
+  const dragGesture = useMemo(() => {
+    if (!dragEnabled || isWeb) return undefined;
+    return Gesture.Pan()
+      .activateAfterLongPress(DRAG_LONG_PRESS_MS)
+      .runOnJS(true)
+      .onStart((event) => beginDrag(event.x, event.y))
+      .onUpdate((event) => extendDrag(event.x, event.y))
+      .onEnd((_event, success) => {
+        if (success) endDrag();
+      })
+      .onFinalize(() => {
+        if (dragRef.current) applyDrag(null);
+      });
+  }, [dragEnabled, beginDrag, extendDrag, endDrag, applyDrag]);
+
+  // Web: the cell touchables swallow the pan above, so drive the same three steps
+  // from pointer events on the grid instead. Positions come from the grid's own
+  // box, so they line up with the hit test's grid-relative coordinates.
+  const gridPoint = useCallback((clientX: number, clientY: number) => {
+    const node = gridRef.current as unknown as {
+      getBoundingClientRect?: () => { left: number; top: number };
+    } | null;
+    const rect = node?.getBoundingClientRect?.();
+    return rect ? { x: clientX - rect.left, y: clientY - rect.top } : null;
+  }, []);
+  useEffect(() => {
+    if (!isWeb || !dragEnabled) return;
+    // A drag can be released anywhere, so commit on the window rather than the grid.
+    const up = () => {
+      if (dragRef.current) endDrag();
+    };
+    const target = globalThis as unknown as {
+      addEventListener?: (type: string, cb: () => void) => void;
+      removeEventListener?: (type: string, cb: () => void) => void;
+    };
+    target.addEventListener?.("pointerup", up);
+    // Let a touch drag sketch a span instead of scrolling the page under it, and
+    // stop a sweep from text-selecting the day numbers it passes over.
+    const node = gridRef.current as unknown as {
+      style?: { touchAction?: string; userSelect?: string };
+    } | null;
+    if (node?.style) {
+      node.style.touchAction = "none";
+      node.style.userSelect = "none";
+    }
+    return () => target.removeEventListener?.("pointerup", up);
+  }, [dragEnabled, endDrag]);
+
   const renderDay = (
     day: Date,
     dayCol: number,
@@ -381,6 +637,13 @@ function MonthViewInner<T>({
     const hasBand =
       rangeBandKind({ isInRange, isRangeStart, isRangeEnd }, fillCellOnSelection) !== "none";
     const dayKey = day.toISOString();
+    // Tint the days a drag is currently over: every day of a create sweep, or the
+    // one an event would land on.
+    const isDragPreview =
+      isInCreateSpan(drag, day) ||
+      (drag?.kind === "move" &&
+        isSameCalendarDay(day, drag.to) &&
+        !isSameCalendarDay(day, drag.from));
     // A hovered, non-filled day gets the subtle badge highlight on the web, but only
     // in the events-free picker. The events calendar (month and list views) has no
     // hover, matching the dom renderer (its events-mode cell omits it).
@@ -396,7 +659,16 @@ function MonthViewInner<T>({
           : theme.colors.textDisabled;
 
     // Disabled days ignore taps; pass the guards through so a press never fires.
-    const handlePressDay = isDisabled || !onPressDay ? undefined : () => onPressDay(day);
+    // `onPressCell` receives the same day at midnight, so one handler covers both
+    // the month grid and the week/day grid's empty slots.
+    const handlePressDay =
+      isDisabled || (!onPressDay && !onPressCell)
+        ? undefined
+        : () => {
+            if (consumeSuppressedPress()) return;
+            onPressDay?.(day);
+            onPressCell?.(startOfDay(day));
+          };
     const handleLongPressDay =
       isDisabled || !onLongPressDay ? undefined : () => onLongPressDay(day);
 
@@ -417,6 +689,9 @@ function MonthViewInner<T>({
           borderColor: theme.colors.gridLine,
         },
         highlightWeekends && isWeekend(day) && { backgroundColor: theme.colors.weekendBackground },
+        // The drag preview sits on top of the weekend tint: the span being swept
+        // out, or the day an event is about to land on.
+        isDragPreview && { backgroundColor: theme.colors.rangeBackground },
         theme.containers.dayCell,
       ],
     });
@@ -441,7 +716,7 @@ function MonthViewInner<T>({
             })}
         onPress={handlePressDay}
         onLongPress={handleLongPressDay}
-        disabled={isDisabled || (!onPressDay && !onLongPressDay)}
+        disabled={isDisabled || (!onPressDay && !onLongPressDay && !onPressCell)}
         // Web only: track hover for the badge highlight, and (when drag-select is
         // wired) relay pointer down/enter so MonthList can extend a range as the
         // pressed pointer sweeps across cells. Native uses a pan, no hover.
@@ -573,8 +848,10 @@ function MonthViewInner<T>({
   };
 
   const handleLayout = (event: LayoutChangeEvent) => {
-    const next = event.nativeEvent.layout.height;
-    setGridHeight((prev) => (prev === next ? prev : next));
+    const { width, height } = event.nativeEvent.layout;
+    setGridSize((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height },
+    );
   };
 
   return (
@@ -655,77 +932,120 @@ function MonthViewInner<T>({
           </Pressable>
         </Modal>
       ) : null}
-      <View {...slot("grid", { base: styles.container })} onLayout={handleLayout}>
-        {weeks.map((week, weekIndex) => {
-          // Spanning bars for this row (laid out once in `weekLayouts`). A multi-day
-          // event is one bar across its columns, stacked into lanes; the bars render
-          // in an overlay so they can span cells, and the cells reserve the lane rows
-          // so "+more" sits below them. `visibleLanes` mirrors the per-day cap.
-          const rowLayout = weekLayouts[weekIndex] ?? EMPTY_LAYOUT;
-          const visibleLanes = monthVisibleCount(rowLayout.laneCount, capacity);
-          const cols = week.length;
-          // With adjacent months hidden, clamp bars to the current-month columns so
-          // none draw over the blank leading/trailing cells.
-          let firstVisCol = 0;
-          let lastVisCol = cols - 1;
-          if (showGrid && !showAdjacentMonths) {
-            const first = week.findIndex((d) => isSameMonth(d, date));
-            if (first !== -1) {
-              firstVisCol = first;
-              lastVisCol = cols - 1 - [...week].reverse().findIndex((d) => isSameMonth(d, date));
+      <MonthGridSurface gesture={dragGesture}>
+        <View
+          ref={gridRef}
+          testID="month-grid"
+          {...slot("grid", { base: styles.container })}
+          onLayout={handleLayout}
+          {...(isWeb && dragEnabled
+            ? {
+                onPointerDown: (event: RNPointerEvent) => {
+                  const point = gridPoint(event.nativeEvent.clientX, event.nativeEvent.clientY);
+                  if (point) beginDrag(point.x, point.y);
+                },
+                onPointerMove: (event: RNPointerEvent) => {
+                  if (!dragRef.current) return;
+                  const point = gridPoint(event.nativeEvent.clientX, event.nativeEvent.clientY);
+                  if (point) extendDrag(point.x, point.y);
+                },
+              }
+            : null)}
+        >
+          {weeks.map((week, weekIndex) => {
+            // Spanning bars for this row (laid out once in `weekLayouts`). A multi-day
+            // event is one bar across its columns, stacked into lanes; the bars render
+            // in an overlay so they can span cells, and the cells reserve the lane rows
+            // so "+more" sits below them. `visibleLanes` mirrors the per-day cap.
+            const rowLayout = weekLayouts[weekIndex] ?? EMPTY_LAYOUT;
+            const visibleLanes = monthVisibleCount(rowLayout.laneCount, capacity);
+            const cols = week.length;
+            // With adjacent months hidden, clamp bars to the current-month columns so
+            // none draw over the blank leading/trailing cells.
+            let firstVisCol = 0;
+            let lastVisCol = cols - 1;
+            if (showGrid && !showAdjacentMonths) {
+              const first = week.findIndex((d) => isSameMonth(d, date));
+              if (first !== -1) {
+                firstVisCol = first;
+                lastVisCol = cols - 1 - [...week].reverse().findIndex((d) => isSameMonth(d, date));
+              }
             }
-          }
-          return (
-            <View
-              {...slot("week", { base: styles.weekRow, themed: theme.containers.weekRow })}
-              key={week[0].toISOString()}
-            >
-              {week.map((day, dayCol) => renderDay(day, dayCol, rowLayout, visibleLanes))}
-              {showGrid ? (
-                <View style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}>
-                  {rowLayout.segments
-                    .filter((seg) => seg.lane < visibleLanes)
-                    .map((seg) => {
-                      const startCol = Math.max(seg.startCol, firstVisCol);
-                      const endCol = Math.min(seg.endCol, lastVisCol);
-                      if (startCol > endCol) return null;
-                      return (
-                        <View
-                          key={`bar-${seg.event.start.toISOString()}:${seg.event.title}:${seg.lane}`}
-                          style={{
-                            position: "absolute",
-                            left: pct((startCol / cols) * 100),
-                            width: pct(((endCol - startCol + 1) / cols) * 100),
-                            top: BADGE_AREA + seg.lane * chipMetrics.chipRowHeight,
-                            height: chipMetrics.chipHeight,
-                            paddingHorizontal: CHIP_INSET_H,
-                            pointerEvents: "box-none",
-                          }}
-                        >
-                          <RenderEventComponent
-                            event={seg.event}
-                            mode="month"
-                            isAllDay={isAllDayEvent(seg.event)}
-                            onPress={
-                              disableMonthEventCellPress ? () => {} : () => onPressEvent(seg.event)
-                            }
-                            onLongPress={
-                              disableMonthEventCellPress || !onLongPressEvent
-                                ? undefined
-                                : () => onLongPressEvent(seg.event)
-                            }
-                          />
-                        </View>
-                      );
-                    })}
-                </View>
-              ) : null}
-            </View>
-          );
-        })}
-      </View>
+            return (
+              <View
+                {...slot("week", { base: styles.weekRow, themed: theme.containers.weekRow })}
+                key={week[0].toISOString()}
+              >
+                {week.map((day, dayCol) => renderDay(day, dayCol, rowLayout, visibleLanes))}
+                {showGrid ? (
+                  <View style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}>
+                    {rowLayout.segments
+                      .filter((seg) => seg.lane < visibleLanes)
+                      .map((seg) => {
+                        const startCol = Math.max(seg.startCol, firstVisCol);
+                        const endCol = Math.min(seg.endCol, lastVisCol);
+                        if (startCol > endCol) return null;
+                        // Fade the bar being carried, so the tinted drop target reads
+                        // as where it is going and this as where it came from.
+                        const isDragged = drag?.kind === "move" && drag.event === seg.event;
+                        return (
+                          <View
+                            key={`bar-${seg.event.start.toISOString()}:${seg.event.title}:${seg.lane}`}
+                            style={{
+                              position: "absolute",
+                              left: pct((startCol / cols) * 100),
+                              width: pct(((endCol - startCol + 1) / cols) * 100),
+                              top: BADGE_AREA + seg.lane * chipMetrics.chipRowHeight,
+                              height: chipMetrics.chipHeight,
+                              paddingHorizontal: CHIP_INSET_H,
+                              // Let a sweep in progress reach the cells underneath.
+                              pointerEvents: drag ? "none" : "box-none",
+                              opacity: isDragged ? DRAGGED_BAR_OPACITY : 1,
+                            }}
+                          >
+                            <RenderEventComponent
+                              event={seg.event}
+                              mode="month"
+                              isAllDay={isAllDayEvent(seg.event)}
+                              onPress={
+                                disableMonthEventCellPress
+                                  ? () => {}
+                                  : () => {
+                                      if (consumeSuppressedPress()) return;
+                                      onPressEvent(seg.event);
+                                    }
+                              }
+                              onLongPress={
+                                disableMonthEventCellPress || !onLongPressEvent
+                                  ? undefined
+                                  : () => onLongPressEvent(seg.event)
+                              }
+                            />
+                          </View>
+                        );
+                      })}
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      </MonthGridSurface>
     </View>
   );
+}
+
+// The grid, wrapped in a GestureDetector only when a month drag is wired up, so
+// the picker (and any month without drag handlers) mounts no gesture at all.
+function MonthGridSurface({
+  gesture,
+  children,
+}: {
+  gesture?: ReturnType<typeof Gesture.Pan>;
+  children: ReactElement;
+}): ReactElement {
+  if (!gesture) return children;
+  return <GestureDetector gesture={gesture}>{children}</GestureDetector>;
 }
 
 /**

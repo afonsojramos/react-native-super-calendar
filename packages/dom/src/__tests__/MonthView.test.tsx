@@ -367,8 +367,12 @@ describe("dom MonthView", () => {
       );
       fireEvent.pointerDown(dayCell(container, "2026-07-06"), { button: 0 });
       fireEvent.pointerEnter(dayCell(container, "2026-07-08"));
-      // Days across the sketched span are flagged for styling.
-      expect(dayCell(container, "2026-07-07").hasAttribute("data-creating")).toBe(true);
+      // Days across the sketched span are flagged for styling, and tinted so the
+      // sweep reads live; the day just outside it is neither.
+      const swept = dayCell(container, "2026-07-07");
+      expect(swept.hasAttribute("data-creating")).toBe(true);
+      expect(swept.style.background).toBe("rgb(220, 231, 255)"); // theme.rangeBackground
+      expect(dayCell(container, "2026-07-09").hasAttribute("data-creating")).toBe(false);
       fireEvent.pointerUp(window);
 
       expect(onCreateEvent).toHaveBeenCalledTimes(1);
@@ -417,6 +421,183 @@ describe("dom MonthView", () => {
       fireEvent.click(cell);
       expect(onCreateEvent).not.toHaveBeenCalled();
       expect(onPressDay).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("drag to reschedule", () => {
+    const dayCell = (c: HTMLElement, id: string) =>
+      c.querySelector(`[data-day="${id}"]`) as HTMLElement;
+    const standup: CalendarEvent = {
+      title: "Standup",
+      start: new Date(2026, 6, 6, 9, 30),
+      end: new Date(2026, 6, 6, 10, 15),
+    };
+
+    it("fires onDragEvent with both ends shifted by the days dragged", () => {
+      const onDragEvent = jest.fn();
+      const { container, getByTitle } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[standup]}
+          onDragEvent={onDragEvent}
+        />,
+      );
+      const chip = getByTitle("Standup");
+      fireEvent.pointerDown(chip, { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-09"));
+      // The day the event would land on is flagged and tinted; the one it came
+      // from is not. The carried chip fades and stops taking pointer events, so
+      // the drag reaches the cells underneath.
+      const target = dayCell(container, "2026-07-09");
+      expect(target.hasAttribute("data-drop")).toBe(true);
+      expect(target.style.background).toBe("rgb(220, 231, 255)"); // theme.rangeBackground
+      expect(dayCell(container, "2026-07-06").hasAttribute("data-drop")).toBe(false);
+      expect(Number(chip.style.opacity)).toBeLessThan(1);
+      expect(chip.style.pointerEvents).toBe("none");
+      fireEvent.pointerUp(window);
+
+      expect(onDragEvent).toHaveBeenCalledTimes(1);
+      const [event, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+      expect(event).toBe(standup);
+      // The time of day and the 45-minute duration survive the move.
+      expect(start).toEqual(new Date(2026, 6, 9, 9, 30));
+      expect(end).toEqual(new Date(2026, 6, 9, 10, 15));
+    });
+
+    it("swallows the click after a drop, so the event is not also opened", () => {
+      const onDragEvent = jest.fn();
+      const onPressEvent = jest.fn();
+      const { container, getByTitle } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[standup]}
+          onDragEvent={onDragEvent}
+          onPressEvent={onPressEvent}
+        />,
+      );
+      const chip = getByTitle("Standup");
+      fireEvent.pointerDown(chip, { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-09"));
+      fireEvent.pointerUp(window);
+      fireEvent.click(chip);
+      expect(onDragEvent).toHaveBeenCalledTimes(1);
+      expect(onPressEvent).not.toHaveBeenCalled();
+    });
+
+    it("leaves a plain click on the chip to onPressEvent", () => {
+      const onDragEvent = jest.fn();
+      const onPressEvent = jest.fn();
+      const { getByTitle } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[standup]}
+          onDragEvent={onDragEvent}
+          onPressEvent={onPressEvent}
+        />,
+      );
+      const chip = getByTitle("Standup");
+      fireEvent.pointerDown(chip, { button: 0 });
+      fireEvent.pointerUp(window);
+      fireEvent.click(chip);
+      expect(onDragEvent).not.toHaveBeenCalled();
+      expect(onPressEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not pick up an event locked with draggable: false", () => {
+      const onDragEvent = jest.fn();
+      const locked: CalendarEvent = { ...standup, draggable: false };
+      const { container, getByTitle } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[locked]}
+          onDragEvent={onDragEvent}
+        />,
+      );
+      fireEvent.pointerDown(getByTitle("Standup"), { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-09"));
+      fireEvent.pointerUp(window);
+      expect(onDragEvent).not.toHaveBeenCalled();
+    });
+
+    it("honours eventStartEditable={false} as the grid-wide lock", () => {
+      const onDragEvent = jest.fn();
+      const { container, getByTitle } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[standup]}
+          eventStartEditable={false}
+          onDragEvent={onDragEvent}
+        />,
+      );
+      fireEvent.pointerDown(getByTitle("Standup"), { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-09"));
+      fireEvent.pointerUp(window);
+      expect(onDragEvent).not.toHaveBeenCalled();
+    });
+
+    it("rejects a drop onto an overlapping event when eventOverlap is false", () => {
+      const onDragEvent = jest.fn();
+      // Same wall-clock slot on the 9th, so the move would collide there.
+      const clash: CalendarEvent = {
+        title: "Clash",
+        start: new Date(2026, 6, 9, 9, 30),
+        end: new Date(2026, 6, 9, 10, 15),
+      };
+      const { container, getByTitle } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[standup, clash]}
+          eventOverlap={false}
+          onDragEvent={onDragEvent}
+        />,
+      );
+      fireEvent.pointerDown(getByTitle("Standup"), { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-09"));
+      fireEvent.pointerUp(window);
+      expect(onDragEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("onPressCell", () => {
+    const dayCell = (c: HTMLElement, id: string) =>
+      c.querySelector(`[data-day="${id}"]`) as HTMLElement;
+
+    it("fires with the tapped day at midnight, alongside onPressDay", () => {
+      const onPressCell = jest.fn();
+      const onPressDay = jest.fn();
+      const { container } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[]}
+          onPressCell={onPressCell}
+          onPressDay={onPressDay}
+        />,
+      );
+      fireEvent.click(dayCell(container, "2026-07-06"));
+      expect(onPressCell).toHaveBeenCalledWith(new Date(2026, 6, 6));
+      expect(onPressDay).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fire for a disabled day", () => {
+      const onPressCell = jest.fn();
+      const { container } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[]}
+          isDateDisabled={(d) => d.getDate() === 6}
+          onPressCell={onPressCell}
+        />,
+      );
+      fireEvent.click(dayCell(container, "2026-07-06"));
+      expect(onPressCell).not.toHaveBeenCalled();
     });
   });
 });

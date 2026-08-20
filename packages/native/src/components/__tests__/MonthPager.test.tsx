@@ -65,3 +65,28 @@ describe("MonthPager event updates", () => {
     expect(getByLabelText(/6 January 2026, 1 event$/)).toBeTruthy();
   });
 });
+
+describe("MonthPager title", () => {
+  const date = new Date(2026, 0, 6);
+
+  it("renders the built-in 'MMMM yyyy' title by default", () => {
+    const { getByText } = render(
+      <Calendar mode="month" date={date} events={[]} onChangeDate={noop} onPressEvent={noop} />,
+    );
+    expect(getByText("January 2026")).toBeTruthy();
+  });
+
+  it("hides it with showTitle={false}, so an app header can own the label", () => {
+    const { queryByText } = render(
+      <Calendar
+        mode="month"
+        date={date}
+        events={[]}
+        showTitle={false}
+        onChangeDate={noop}
+        onPressEvent={noop}
+      />,
+    );
+    expect(queryByText("January 2026")).toBeNull();
+  });
+});

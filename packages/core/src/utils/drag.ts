@@ -1,3 +1,4 @@
+import { addDays, differenceInCalendarDays, startOfDay } from "date-fns";
 import type { CalendarEvent, CalendarMode, WeekStartsOn } from "../types";
 import { getViewDays } from "./dates";
 
@@ -106,6 +107,36 @@ export function resolveDraggedBounds(
   // Reject only a shrink past one step — never a move, which preserves duration.
   if (newDuration < snapMinutes * 60_000 && newDuration < oldDuration) return null;
   return { start: nextStart, end: nextEnd };
+}
+
+/**
+ * The all-day range swept out between two day cells of the month grid, ordered
+ * whichever way the sweep ran: `start` is midnight of the first day and `end` is
+ * midnight after the last, so a one-day sweep still yields a usable event. Shared
+ * by both renderers so a month drag-to-create means the same thing on each.
+ */
+export function monthCreateRange(anchor: Date, hover: Date): { start: Date; end: Date } {
+  const a = startOfDay(anchor);
+  const b = startOfDay(hover);
+  const first = a.getTime() <= b.getTime() ? a : b;
+  const last = a.getTime() <= b.getTime() ? b : a;
+  return { start: first, end: addDays(last, 1) };
+}
+
+/**
+ * The new bounds for an event picked up on `fromDay` and dropped on `toDay` in
+ * the month grid: both ends move by the same number of calendar days, so the
+ * event keeps its time of day and duration (DST included). Returns `null` when
+ * the drop lands on the day it started, so a stray drag commits nothing.
+ */
+export function monthDropBounds<T>(
+  event: CalendarEvent<T>,
+  fromDay: Date,
+  toDay: Date,
+): { start: Date; end: Date } | null {
+  const delta = differenceInCalendarDays(startOfDay(toDay), startOfDay(fromDay));
+  if (delta === 0) return null;
+  return { start: addDays(event.start, delta), end: addDays(event.end, delta) };
 }
 
 /**

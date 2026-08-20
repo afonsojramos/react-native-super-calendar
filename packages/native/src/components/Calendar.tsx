@@ -67,19 +67,20 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   /** Long-press an event (month/week/day). */
   onLongPressEvent?: (event: CalendarEvent<T>) => void;
   /**
-   * Enable drag-to-move and drag-to-resize on the week/day grid. Called with the
-   * dragged event and its new start/end (snapped to `dragStepMinutes`); update
-   * your own event state in response. Long-press an event to move it (drag
-   * horizontally to change the day too); drag its bottom grip to resize. Return
-   * `false` to reject the drop (e.g. an overlap) and snap the event back.
+   * Enable drag-to-move and drag-to-resize. Called with the dragged event and its
+   * new start/end; update your own event state in response. On the week/day grid,
+   * long-press an event to move it (drag horizontally to change the day too) or
+   * drag its bottom grip to resize, snapped to `dragStepMinutes`. In `month` mode,
+   * long-press an event bar and drop it on another day: both ends shift by the
+   * days dragged, so the time of day and duration are kept. Return `false` to
+   * reject the drop (e.g. an overlap) and snap the event back.
    */
   onDragEvent?: EventDragHandler<T>;
   /**
-   * Fired when a move or resize gesture begins on the week/day grid, before any
-   * change is committed: on grab for a move (after the long-press), and when a
-   * resize drag starts. Use it to trigger haptic feedback, e.g.
-   * `Haptics.impactAsync()` from `expo-haptics`. Native-only and inert unless
-   * `onDragEvent` is also set.
+   * Fired when a drag gesture begins, before any change is committed: on grab for
+   * a move (after the long-press), and when a week/day resize drag starts. Use it
+   * to trigger haptic feedback, e.g. `Haptics.impactAsync()` from `expo-haptics`.
+   * Native-only and inert unless `onDragEvent` is also set.
    */
   onDragStart?: EventDragStartHandler<T>;
   /** Minutes a drag-to-move/resize snaps to. Default 15. */
@@ -97,18 +98,23 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   onLongPressDay?: (date: Date) => void;
   /** Tap the "+N more" overflow label in a month cell. */
   onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
-  /** Tap empty space on the week/day grid; receives the date+time pressed. */
+  /**
+   * Tap empty space; receives the date+time pressed on the week/day grid, or the
+   * tapped day at midnight in `month` mode (where it fires alongside `onPressDay`).
+   */
   onPressCell?: (date: Date) => void;
   /** After an empty-cell press, snap the pager back to the active page. Default false. */
   resetPageOnPressCell?: boolean;
   /** Long-press empty space on the week/day grid; receives the date+time. */
   onLongPressCell?: (date: Date) => void;
   /**
-   * Enable drag-to-create on the week/day grid: long-press empty space and drag
-   * to sweep out a new event's time range. Called on release with the snapped
-   * `start`/`end` (to `dragStepMinutes`); create your own event in response. A
-   * stationary press yields a one-step range. Native-only; supersedes
-   * `onLongPressCell` on empty space when set.
+   * Enable drag-to-create: long-press empty space and drag to sweep out a new
+   * event, then release. On the week/day grid that is a time range snapped to
+   * `dragStepMinutes` (a stationary press yields a one-step range); in `month`
+   * mode it is an **all-day** span across the days swept — `start` at midnight of
+   * the first day, `end` at midnight after the last. Create your own event in
+   * response. Supersedes `onLongPressCell` (and, in month mode, `onLongPressDay`)
+   * on empty space when set.
    */
   onCreateEvent?: (start: Date, end: Date) => void;
   /** Tap a day's column header on the week/day grid (default header only). */
@@ -209,6 +215,11 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   hourComponent?: HourRenderer;
   /** Always render six week rows in month view, for a fixed-height grid. Default false. */
   showSixWeeks?: boolean;
+  /**
+   * Render the built-in "MMMM yyyy" title above the month grid. Default true. Set
+   * false when your own header already shows the month and year. Month mode only.
+   */
+  showTitle?: boolean;
   /** Allow swiping between pages (all modes). Default true. */
   swipeEnabled?: boolean;
   /** Show the vertical scroll indicator on the week/day grid. Default true. */
@@ -416,6 +427,7 @@ export function Calendar<T>({
   weekNumberPrefix,
   hourComponent,
   showSixWeeks,
+  showTitle,
   swipeEnabled,
   showVerticalScrollIndicator,
   verticalScrollEnabled,
@@ -557,6 +569,7 @@ export function Calendar<T>({
           disableMonthEventCellPress={disableMonthEventCellPress}
           isRTL={isRTL}
           showSixWeeks={showSixWeeks}
+          showTitle={showTitle}
           activeDate={activeDate}
           renderHeaderForMonthView={renderHeaderForMonthView}
           renderCustomDateForMonth={renderCustomDateForMonth}
@@ -565,9 +578,15 @@ export function Calendar<T>({
           keyExtractor={keyExtractor}
           onPressDay={onPressDay}
           onLongPressDay={onLongPressDay}
+          onPressCell={onPressCell}
           onPressEvent={handlePressEvent}
           onLongPressEvent={handleLongPressEvent}
           onPressMore={onPressMore}
+          onCreateEvent={onCreateEvent}
+          onDragEvent={onDragEvent}
+          onDragStart={onDragStart}
+          eventStartEditable={eventStartEditable}
+          eventOverlap={eventOverlap}
           onChangeDate={handleChangeDate}
           freeSwipe={freeSwipe}
           swipeEnabled={swipeEnabled}
