@@ -6,6 +6,7 @@ The React Native renderer for [super-calendar](https://github.com/afonsojramos/s
 
 - 📆 Month grid plus day / 3-day / week / custom-N time grids and an agenda
 - 🤏 Pinch-to-zoom week/day grid (UI thread, no re-renders)
+- ✋ Drag to select, create, and move: by time on the week/day grid, by whole days on the month and year grids
 - ♾️ Virtualized, snap-paging views via [`@legendapp/list`](https://legendapp.com/open-source/list/)
 - 🧩 Bring-your-own event type (`CalendarEvent<T>`) and a `renderEvent` escape hatch
 - 🪝 Headless `useMonthGrid` and `useDateRange` for fully custom UIs

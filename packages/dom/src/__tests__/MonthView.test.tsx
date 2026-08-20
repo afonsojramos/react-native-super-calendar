@@ -422,6 +422,93 @@ describe("dom MonthView", () => {
       expect(onCreateEvent).not.toHaveBeenCalled();
       expect(onPressDay).toHaveBeenCalledTimes(1);
     });
+
+    it("does not swallow the click after a drag that ended on another cell", () => {
+      const onCreateEvent = jest.fn();
+      const onPressDay = jest.fn();
+      const { container } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[]}
+          onCreateEvent={onCreateEvent}
+          onPressDay={onPressDay}
+        />,
+      );
+      fireEvent.pointerDown(dayCell(container, "2026-07-06"), { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-08"));
+      // A sweep that lands on a different cell produces no click at all, so the
+      // suppression it armed must be cleared by the next press.
+      fireEvent.pointerUp(window);
+      expect(onCreateEvent).toHaveBeenCalledTimes(1);
+
+      const cell = dayCell(container, "2026-07-10");
+      fireEvent.pointerDown(cell, { button: 0 });
+      fireEvent.pointerUp(window);
+      fireEvent.click(cell);
+      expect(onPressDay).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("drag to select", () => {
+    const dayCell = (c: HTMLElement, id: string) =>
+      c.querySelector(`[data-day="${id}"]`) as HTMLElement;
+
+    it("reports the ordered span live as the sweep crosses days", () => {
+      const onSelectDrag = jest.fn();
+      const { container } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[]}
+          onSelectDrag={onSelectDrag}
+        />,
+      );
+      fireEvent.pointerDown(dayCell(container, "2026-07-06"), { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-07"));
+      fireEvent.pointerEnter(dayCell(container, "2026-07-08"));
+      expect(onSelectDrag).toHaveBeenCalledTimes(2);
+      // Inclusive endpoints, unlike onCreateEvent's exclusive end.
+      expect(onSelectDrag.mock.calls[1]).toEqual([new Date(2026, 6, 6), new Date(2026, 6, 8)]);
+      fireEvent.pointerUp(window);
+    });
+
+    it("keeps disabled days out of the sweep", () => {
+      const onSelectDrag = jest.fn();
+      const onCreateEvent = jest.fn();
+      const { container } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[]}
+          minDate={new Date(2026, 6, 8)}
+          onSelectDrag={onSelectDrag}
+          onCreateEvent={onCreateEvent}
+        />,
+      );
+      fireEvent.pointerDown(dayCell(container, "2026-07-10"), { button: 0 });
+      // 6 July is before minDate, so the sweep must not extend onto it.
+      fireEvent.pointerEnter(dayCell(container, "2026-07-06"));
+      expect(onSelectDrag).not.toHaveBeenCalled();
+      fireEvent.pointerUp(window);
+      expect(onCreateEvent).not.toHaveBeenCalled();
+    });
+
+    it("orders a backwards sweep", () => {
+      const onSelectDrag = jest.fn();
+      const { container } = render(
+        <MonthView
+          date={new Date(2026, 6, 1)}
+          weekStartsOn={1}
+          events={[]}
+          onSelectDrag={onSelectDrag}
+        />,
+      );
+      fireEvent.pointerDown(dayCell(container, "2026-07-08"), { button: 0 });
+      fireEvent.pointerEnter(dayCell(container, "2026-07-06"));
+      expect(onSelectDrag).toHaveBeenCalledWith(new Date(2026, 6, 6), new Date(2026, 6, 8));
+      fireEvent.pointerUp(window);
+    });
   });
 
   describe("drag to reschedule", () => {

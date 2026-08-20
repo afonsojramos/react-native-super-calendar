@@ -38,6 +38,57 @@ at least one event gets a small dot (recurring rules are expanded across the
 whole year first). Today gets the theme's filled badge; pass `activeDate` to
 highlight a different day.
 
+## Selecting dates
+
+The mini months take the same selection props as the month grid and the picker:
+`selectedDates`, `selectedRange`, `minDate`, `maxDate`, and `isDateDisabled`.
+Selected days and range endpoints get the filled badge (today still wins where
+they coincide), the days between get the range band, and disabled days are dimmed
+and ignore taps.
+
+`onSelectDrag` adds drag-to-select: **hold a day and drag** across others (press
+and drag on the web) and it fires live with the ordered inclusive `[start, end]`,
+so the highlight follows the gesture. Pair it with `useDateRange`:
+
+```tsx
+const { range, onPressDate, selectRange } = useDateRange();
+
+<Calendar
+  mode="year"
+  date={date}
+  events={events}
+  onChangeDate={setDate}
+  selectedRange={range ?? undefined}
+  onPressDay={onPressDate}
+  onSelectDrag={selectRange}
+/>;
+```
+
+On a device a sweep runs across the days of the mini month it started in; on the
+web it can carry on across mini months. See [Date selection](/guides/selection)
+for the full selection model.
+
+## Creating events
+
+`onCreateEvent` reports the same sweep once, on release, as an **all-day** range:
+`start` at midnight of the first day and `end` at midnight after the last
+(exclusive). A plain tap still fires `onPressDay`, so drill-down and creation can
+coexist.
+
+```tsx
+<Calendar
+  mode="year"
+  /* ... */
+  onCreateEvent={(start, end) =>
+    setEvents((prev) => [...prev, { id: makeId(), title: "Leave", start, end, allDay: true }])
+  }
+/>
+```
+
+Because the year view summarises events as dots rather than chips, there is
+nothing to pick up: `onDragEvent` (drag an event to another day) applies to
+`month` mode, not `year`. See [Drag & create](/guides/dragging).
+
 ## Layout
 
 The grid fits as many columns as the width allows, so a phone gets 2 columns
@@ -64,7 +115,15 @@ import { YearView } from "@super-calendar/native";
 ## Styling
 
 Every part is a [slot](/guides/styling): `grid`, `month`, `monthTitle`,
-`weekdays`, `weekday`, `week`, `day`, and `eventDot` (plus `dayText` on React
-Native, where text colour doesn't inherit). On the web, day cells carry
-`data-today` and `data-events` for Tailwind variants. The theme's
-`todayBackground` / `todayText` drive the badge and dots.
+`weekdays`, `weekday`, `week`, `day`, `dayBadge`, `rangeBand`, and `eventDot`
+(plus `dayText` on React Native, where text colour doesn't inherit). On the web,
+day cells carry `data-today`, `data-events`, `data-selected`, `data-range`,
+`data-disabled`, and `data-creating` for Tailwind variants. The theme's
+`todayBackground` / `todayText` drive the badge and dots, and `rangeBackground`
+the selection band.
+
+<Note>
+  The today / selected circle now lives on the `dayBadge` slot, not `day` (which is the cell around
+  it), matching the month grid. If you were restyling that circle through `classNames.day` or
+  `styles.day`, move those overrides to `dayBadge`.
+</Note>

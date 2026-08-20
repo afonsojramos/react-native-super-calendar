@@ -205,6 +205,13 @@ export interface CalendarProps<T = unknown>
   keyboardDayNavigation?: boolean;
   /** Tap a day cell. */
   onPressDay?: (date: Date) => void;
+  /**
+   * Month and year modes: reports a create sweep's day span as it happens, as the
+   * ordered inclusive `[start, end]` days, so a selection highlight can follow the
+   * drag. Pair it with `useDateRange`'s `selectRange`. Enables the sweep on its
+   * own, so it works without `onCreateEvent`.
+   */
+  onSelectDrag?: (start: Date, end: Date) => void;
   /** Tap a month's title in the year view — e.g. jump to that month. */
   onPressMonth?: (month: Date) => void;
   /** Tap the "+N more" overflow row. */
@@ -335,6 +342,7 @@ export function Calendar<T = unknown>({
   isDateDisabled,
   keyboardDayNavigation,
   onPressDay,
+  onSelectDrag,
   onPressMonth,
   onPressMore,
   renderMonthEvent,
@@ -388,8 +396,15 @@ export function Calendar<T = unknown>({
         style={height != null ? { height, ...style } : style}
         classNames={classNames}
         styles={styles}
+        selectedRange={selectedRange}
+        selectedDates={selectedDates}
+        minDate={minDate}
+        maxDate={maxDate}
+        isDateDisabled={isDateDisabled}
         onPressDay={onPressDay}
         onPressMonth={onPressMonth}
+        onSelectDrag={onSelectDrag}
+        onCreateEvent={onCreateEvent}
       />
     );
   } else if (mode === "schedule") {
@@ -440,6 +455,7 @@ export function Calendar<T = unknown>({
         onPressDay={onPressDay}
         onPressCell={onPressCell}
         onCreateEvent={onCreateEvent}
+        onSelectDrag={onSelectDrag}
         onDragEvent={onDragEvent}
         onDragStart={onDragStart}
         eventStartEditable={eventStartEditable}

@@ -465,6 +465,49 @@ describe("MonthView drag", () => {
     });
   });
 
+  describe("to select", () => {
+    it("reports the swept span live, ordered, as the drag crosses days", () => {
+      const onSelectDrag = jest.fn();
+      mount(<MonthView {...baseProps} events={[standup]} onSelectDrag={onSelectDrag} />);
+      const { handlers } = lastGesture();
+      act(() => {
+        handlers.onStart({ x: colX(2), y: rowY(2, EMPTY_Y) }); // Tue 16 June
+        handlers.onUpdate({ x: colX(4), y: rowY(2, EMPTY_Y) }); // Thu 18 June
+      });
+      // Inclusive endpoints, unlike onCreateEvent's exclusive end.
+      expect(onSelectDrag).toHaveBeenLastCalledWith(new Date(2026, 5, 16), new Date(2026, 5, 18));
+      act(() => {
+        handlers.onUpdate({ x: colX(0), y: rowY(2, EMPTY_Y) }); // back to Sun 14 June
+      });
+      expect(onSelectDrag).toHaveBeenLastCalledWith(new Date(2026, 5, 14), new Date(2026, 5, 16));
+    });
+
+    it("enables the sweep on its own, without onCreateEvent", () => {
+      const onSelectDrag = jest.fn();
+      const { __gestures } = require("react-native-gesture-handler");
+      const before = __gestures.length;
+      mount(<MonthView {...baseProps} events={[standup]} onSelectDrag={onSelectDrag} />);
+      expect(__gestures.length).toBeGreaterThan(before);
+      drag({ x: colX(2), y: rowY(2, EMPTY_Y) }, { x: colX(3), y: rowY(2, EMPTY_Y) });
+      expect(onSelectDrag).toHaveBeenCalled();
+    });
+
+    it("stays quiet while an event is being carried to another day", () => {
+      const onSelectDrag = jest.fn();
+      mount(
+        <MonthView
+          {...baseProps}
+          events={[standup]}
+          onSelectDrag={onSelectDrag}
+          onDragEvent={jest.fn()}
+        />,
+      );
+      // Grab the bar itself (the lane row), not the empty space above it.
+      drag({ x: colX(1), y: rowY(2, LANE_Y) }, { x: colX(3), y: rowY(2, LANE_Y) });
+      expect(onSelectDrag).not.toHaveBeenCalled();
+    });
+  });
+
   describe("to reschedule", () => {
     it("fires onDragEvent with both ends shifted by the days dragged", () => {
       const onDragEvent = jest.fn();

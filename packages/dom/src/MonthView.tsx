@@ -165,6 +165,14 @@ export interface MonthViewProps<T = unknown>
    */
   onCreateEvent?: (start: Date, end: Date) => void;
   /**
+   * Reports the day span of a create sweep **as it happens**, as the ordered
+   * inclusive `[start, end]` days (both at midnight), so a selection highlight can
+   * follow the drag instead of appearing only on release. Pair it with
+   * `useDateRange`'s `selectRange` to drive `selectedRange`. Enables the sweep on
+   * its own, so it works without `onCreateEvent`.
+   */
+  onSelectDrag?: (start: Date, end: Date) => void;
+  /**
    * In events mode, enables drag-to-reschedule: press an event chip and drop it on
    * another day. Called with the event and its new `start`/`end`, both shifted by
    * the whole days dragged, so the time of day and duration are preserved. Return
@@ -229,28 +237,39 @@ function dayCellDefault(
  * rounded strip (the default) or fill the whole cell (`fillCell`). Returns null
  * for days with no band. Endpoints get the leading/trailing pill rounding. Its
  * geometry is structural; only the fill colour is themed.
+ *
+ * In events mode the strip tracks the compact date badge instead of the picker's
+ * tall cell, so it reads as a band across the dates rather than a block over the
+ * event chips (and matches the native renderer's month grid).
  */
 function rangeBandDefault(
   day: MonthGridDay,
   theme: DomCalendarTheme,
   fillCell: boolean,
+  eventsMode: boolean,
 ): SlotDefault | null {
   const kind = rangeBandKind(day, fillCell);
   if (kind === "none") return null;
   const fill = kind === "fill";
-  const inset = fill ? 0 : Math.max(0, (theme.cellHeight - theme.rangeBandHeight) / 2);
-  const radius = fill ? 0 : theme.rangeBandHeight / 2;
+  const badgeSize = eventsMode ? DATE_ROW - 2 : theme.dayBadgeSize;
+  const bandHeight = eventsMode ? badgeSize : theme.rangeBandHeight;
+  const inset = fill ? 0 : eventsMode ? CELL_PAD : Math.max(0, (theme.cellHeight - bandHeight) / 2);
+  const radius = fill ? 0 : bandHeight / 2;
   const rounding = bandRounding(kind);
   // Cap the pill at the endpoint circles: a start/end band stops at the circle's
   // outer edge (half a badge in from the cell centre) rather than spilling to the
-  // cell edge, so no band shows in the empty space beside the day circles.
-  const cap = `calc(50% - ${theme.dayBadgeSize / 2}px)`;
+  // cell edge, so no band shows in the empty space beside the day circles. Events
+  // mode puts the badge in the cell's corner instead of its centre, so there the
+  // band spans the whole cell and only rounds its outer ends.
+  const cap = eventsMode ? 0 : `calc(50% - ${badgeSize / 2}px)`;
   const base: CSSProperties = {
     position: "absolute",
     left: rounding.start ? cap : 0,
     right: rounding.end ? cap : 0,
     top: inset,
-    bottom: inset,
+    // An events cell is far taller than its date row, so the strip is sized from
+    // the badge rather than stretched to the cell's bottom.
+    ...(fill || !eventsMode ? { bottom: inset } : { height: bandHeight }),
     zIndex: 0,
   };
   if (rounding.start) {
@@ -479,6 +498,7 @@ export function MonthView<T = unknown>({
   onPressDay,
   onPressCell,
   onCreateEvent,
+  onSelectDrag,
   onDragEvent,
   onDragStart,
   eventStartEditable = true,
@@ -645,7 +665,7 @@ export function MonthView<T = unknown>({
     movedRef.current = false;
   };
   const beginCreate = (day: Date) => {
-    if (!onCreateEvent) return;
+    if (!onCreateEvent && !onSelectDrag) return;
     const t = startOfDay(day).getTime();
     setDrag({ kind: "create", anchor: t, hover: t });
   };
@@ -662,11 +682,17 @@ export function MonthView<T = unknown>({
     if (t === (current.kind === "create" ? current.hover : current.to)) return;
     movedRef.current = true;
     setDrag(current.kind === "create" ? { ...current, hover: t } : { ...current, to: t });
+    // A sweep reports its span live, so a selection can track the drag; a move
+    // has nothing to report until it is dropped.
+    if (current.kind === "create") {
+      const [lo, hi] = current.anchor <= t ? [current.anchor, t] : [t, current.anchor];
+      onSelectDrag?.(new Date(lo), new Date(hi));
+    }
   };
   const isDragging = drag !== null;
   // Whether any month drag is wired up at all, so the cells only take over touch
   // scrolling and pointer tracking when one of the handlers can actually fire.
-  const dragWired = onCreateEvent != null || onDragEvent != null;
+  const dragWired = onCreateEvent != null || onSelectDrag != null || onDragEvent != null;
   useEffect(() => {
     if (!isDragging) return;
     const finish = () => {
@@ -815,7 +841,7 @@ export function MonthView<T = unknown>({
                     <div key={day.id} role="gridcell" aria-hidden style={{ height: cellHeight }} />
                   );
                 }
-                const band = rangeBandDefault(day, theme, fillCellOnSelection);
+                const band = rangeBandDefault(day, theme, fillCellOnSelection, eventsMode);
                 const label = format(
                   day.date,
                   "EEEE, d MMMM yyyy",
@@ -896,7 +922,11 @@ export function MonthView<T = unknown>({
                             }
                           : undefined
                       }
-                      onPointerEnter={dragWired ? () => extendDrag(day.date) : undefined}
+                      // A disabled day is out of every selection, drag included, so
+                      // a sweep never extends onto it and no drop lands there.
+                      onPointerEnter={
+                        dragWired && !day.isDisabled ? () => extendDrag(day.date) : undefined
+                      }
                       onClick={
                         day.isDisabled
                           ? undefined

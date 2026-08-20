@@ -27,6 +27,7 @@ import type {
   WeekStartsOn,
 } from "../types";
 import {
+  type DateRange,
   type EventAccessibilityLabeler,
   eventsInTimeZone,
   expandRecurringEvents,
@@ -117,6 +118,28 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
    * on empty space when set.
    */
   onCreateEvent?: (start: Date, end: Date) => void;
+  /**
+   * Month and year modes: reports a create sweep's day span as it happens, as the
+   * ordered inclusive `[start, end]` days, so a selection highlight can follow the
+   * drag. Pair it with `useDateRange`'s `selectRange` to drive `selectedRange`.
+   * Enables the sweep on its own, so it works without `onCreateEvent`.
+   */
+  onSelectDrag?: (start: Date, end: Date) => void;
+  /** Days drawn as selected (a filled badge) in month and year modes. */
+  selectedDates?: Date[];
+  /** A selected span: endpoints get a filled badge, the span gets the range band. */
+  selectedRange?: DateRange;
+  /**
+   * Fill the whole month cell with the range band instead of the default centered
+   * rounded "pill" strip. Default false.
+   */
+  fillCellOnSelection?: boolean;
+  /** Earliest selectable day (inclusive); earlier days render disabled. */
+  minDate?: Date;
+  /** Latest selectable day (inclusive); later days render disabled. */
+  maxDate?: Date;
+  /** Return true to render a specific day disabled (dimmed, taps ignored). */
+  isDateDisabled?: (date: Date) => boolean;
   /** Tap a day's column header on the week/day grid (default header only). */
   onPressDateHeader?: (date: Date) => void;
   /**
@@ -391,6 +414,13 @@ export function Calendar<T>({
   resetPageOnPressCell,
   onLongPressCell,
   onCreateEvent,
+  onSelectDrag,
+  selectedDates,
+  selectedRange,
+  fillCellOnSelection,
+  minDate,
+  maxDate,
+  isDateDisabled,
   onPressDateHeader,
   maxVisibleEventCount,
   sortedMonthView,
@@ -583,10 +613,17 @@ export function Calendar<T>({
           onLongPressEvent={handleLongPressEvent}
           onPressMore={onPressMore}
           onCreateEvent={onCreateEvent}
+          onSelectDrag={onSelectDrag}
           onDragEvent={onDragEvent}
           onDragStart={onDragStart}
           eventStartEditable={eventStartEditable}
           eventOverlap={eventOverlap}
+          selectedDates={selectedDates}
+          selectedRange={selectedRange}
+          fillCellOnSelection={fillCellOnSelection}
+          minDate={minDate}
+          maxDate={maxDate}
+          isDateDisabled={isDateDisabled}
           onChangeDate={handleChangeDate}
           freeSwipe={freeSwipe}
           swipeEnabled={swipeEnabled}
@@ -601,8 +638,15 @@ export function Calendar<T>({
           hiddenDays={hiddenDays}
           locale={locale}
           activeDate={activeDate}
+          selectedDates={selectedDates}
+          selectedRange={selectedRange}
+          minDate={minDate}
+          maxDate={maxDate}
+          isDateDisabled={isDateDisabled}
           onPressDay={onPressDay}
           onPressMonth={onPressMonth}
+          onSelectDrag={onSelectDrag}
+          onCreateEvent={onCreateEvent}
           classNames={classNames}
           styles={styleOverrides}
         />

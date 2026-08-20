@@ -54,7 +54,8 @@ your editor lists the full set with inline docs.
 | ----------------------- | ---------------------------------------- | --------------------------------------------------------------------------------- |
 | `onDragEvent`           | `(event, start, end) => void \| boolean` | Enable move/resize; return `false` to reject. Month: drop on another day.         |
 | `onDragStart`           | `(event) => void`                        | Fires on grab (e.g. haptics).                                                     |
-| `onCreateEvent`         | `(start, end) => void`                   | Drag empty space to create. Month: an all-day span.                               |
+| `onCreateEvent`         | `(start, end) => void`                   | Drag empty space to create. Month and year: an all-day span.                      |
+| `onSelectDrag`          | `(start, end) => void`                   | Month and year: drag to sweep a date range; fires live.                           |
 | `dragStepMinutes`       | `number`                                 | Snap step (default 15).                                                           |
 | `showDragHandle`        | `boolean`                                | Show the resize grip (default true).                                              |
 | `eventStartEditable`    | `boolean`                                | Grid-wide: allow moving events (default true). Per-event `startEditable`.         |
@@ -67,10 +68,18 @@ your editor lists the full set with inline docs.
 
 ## Selection
 
-Date selection lives on [`MonthList`](/guides/month-list), not the paged `month`
-view. It takes `selectedDates` / `selectedRange` (+ `onSelectDrag` for drag),
-and `minDate` / `maxDate` / `isDateDisabled` for disabled days. See the
-[Date selection](/guides/selection) guide.
+| Prop                  | Type                   | Notes                                            |
+| --------------------- | ---------------------- | ------------------------------------------------ |
+| `selectedDates`       | `Date[]`               | Discrete selected days (month + year).           |
+| `selectedRange`       | `DateRange`            | A selected span (month + year).                  |
+| `fillCellOnSelection` | `boolean`              | Month: fill the cell instead of the pill band.   |
+| `minDate`             | `Date`                 | Earliest selectable day (inclusive).             |
+| `maxDate`             | `Date`                 | Latest selectable day (inclusive).               |
+| `isDateDisabled`      | `(date) => boolean`    | Return true to forbid a specific day.            |
+| `onSelectDrag`        | `(start, end) => void` | Drag to sweep a range; pair with `useDateRange`. |
+
+The same props drive [`MonthList`](/guides/month-list), the scrolling picker. See
+the [Date selection](/guides/selection) guide.
 
 ## Display
 

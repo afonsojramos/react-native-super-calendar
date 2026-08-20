@@ -7,7 +7,8 @@ description: Move, resize, reschedule across days, and create events by dragging
 Everything here is opt-in: pass the relevant handler and update your own event
 state in response. Move, resize, and create work on the week/day grid; move and
 create also work on the month grid (see [On the month grid](#on-the-month-grid)),
-where a drag moves an event by whole days rather than by time.
+where a drag moves an event by whole days rather than by time. The year grid
+sweeps out day ranges too (see [On the year grid](#on-the-year-grid)).
 
 ## Move and resize
 
@@ -199,6 +200,11 @@ click without dragging creates nothing and still fires `onPressDay`.
 />
 ```
 
+`onSelectDrag` reports the **same sweep** as it happens, with the ordered inclusive
+`[start, end]` days, so a selection highlight can follow the drag rather than
+appearing only on release. Set it, `onCreateEvent`, or both; either enables the
+gesture. See [Date selection](/guides/selection) for wiring it to `useDateRange`.
+
 ### Drag to reschedule
 
 Pick an event bar up and drop it on another day. Both ends shift by the same
@@ -232,7 +238,30 @@ about to land on carries `data-drop`, so you can restyle either (see
 [Styling](/guides/styling)); give the `day` slot a class to take the tint over
 entirely.
 
+## On the year grid
+
+The twelve mini months take the same sweep: `onSelectDrag` reports the ordered
+inclusive `[start, end]` days as you drag, and `onCreateEvent` reports the
+all-day range once on release. Hold a day and drag on a device, press and drag on
+the web. Days being swept carry `data-creating` on the dom renderer.
+
+```tsx
+<Calendar
+  mode="year"
+  /* ... */
+  selectedRange={range ?? undefined}
+  onSelectDrag={selectRange}
+  onCreateEvent={(start, end) =>
+    setEvents((prev) => [...prev, { id: makeId(), title: "Leave", start, end, allDay: true }])
+  }
+/>
+```
+
+On a device a sweep stays inside the mini month it started in; on the web it can
+carry on across months. The year view summarises events as dots rather than bars,
+so it has nothing to pick up: `onDragEvent` applies to `month` mode, not `year`.
+
 ## Tuning the snap
 
-`dragStepMinutes` (default 15) controls how move, resize, and create snap. Set it
-to `5`, `30`, etc. to match your grid's granularity.
+`dragStepMinutes` (default 15) controls how move, resize, and create snap on the
+week/day grid. The month and year grids always snap to whole days.

@@ -26,6 +26,9 @@ import type {
   WeekStartsOn,
 } from "../types";
 import {
+  type CalendarSelection,
+  CalendarSelectionProvider,
+  type DateRange,
   type WeekdayFormat,
   filterHiddenDays,
   getWeekDays,
@@ -76,6 +79,20 @@ export type MonthPagerProps<T> = {
   onPressMore?: (events: CalendarEvent<T>[], date: Date) => void;
   /** Drag across empty day cells to sweep out an all-day span for a new event. */
   onCreateEvent?: (start: Date, end: Date) => void;
+  /** Drag-to-select: reports the swept `[start, end]` days live. */
+  onSelectDrag?: (start: Date, end: Date) => void;
+  /** Days drawn as selected (a filled badge). */
+  selectedDates?: Date[];
+  /** A selected span: endpoints get a filled badge, the span gets the range band. */
+  selectedRange?: DateRange;
+  /** Fill the whole cell on selection instead of the default rounded pill band. */
+  fillCellOnSelection?: boolean;
+  /** Earliest selectable day (inclusive); earlier days render disabled. */
+  minDate?: Date;
+  /** Latest selectable day (inclusive); later days render disabled. */
+  maxDate?: Date;
+  /** Return true to render a specific day disabled (dimmed, taps ignored). */
+  isDateDisabled?: (date: Date) => boolean;
   /** Drag an event bar onto another day to reschedule it. */
   onDragEvent?: EventDragHandler<T>;
   /** Fired when a month drag picks an event up, before anything is committed. */
@@ -121,6 +138,13 @@ function MonthPagerInner<T>({
   onLongPressEvent,
   onPressMore,
   onCreateEvent,
+  onSelectDrag,
+  selectedDates,
+  selectedRange,
+  fillCellOnSelection,
+  minDate,
+  maxDate,
+  isDateDisabled,
   onDragEvent,
   onDragStart,
   eventStartEditable,
@@ -259,7 +283,21 @@ function MonthPagerInner<T>({
   // `events` (events that arrive after mount, e.g. from an async fetch, must
   // repaint the mounted page) and `activeDate` (the selected-day highlight must
   // move). Mirrors listExtraData in TimeGrid.
-  const listExtraData = useMemo(() => ({ events, activeDate }), [events, activeDate]);
+  // `fillCellOnSelection` and `onSelectDrag` ride along because they reach the
+  // grids as renderItem props, not through the selection context below: toggling
+  // a "pick dates" mode on must reach the pages already rendered.
+  const listExtraData = useMemo(
+    () => ({ events, activeDate, fillCellOnSelection, dragSelect: onSelectDrag != null }),
+    [events, activeDate, fillCellOnSelection, onSelectDrag],
+  );
+
+  // Selection reaches the grids through context, not `renderItem`, so a change
+  // repaints the pages LegendList has already cached (which `extraData` alone
+  // would not, since the pages are keyed by month and never recycled).
+  const selection = useMemo<CalendarSelection>(
+    () => ({ selectedDates, selectedRange, minDate, maxDate, isDateDisabled }),
+    [selectedDates, selectedRange, minDate, maxDate, isDateDisabled],
+  );
 
   const snapToIndices = useMemo(() => monthDates.map((_, index) => index), [monthDates]);
   const keyExtractorList = useCallback((item: Date) => item.toISOString(), []);
@@ -296,6 +334,8 @@ function MonthPagerInner<T>({
           onLongPressEvent={onLongPressEvent}
           onPressMore={onPressMore}
           onCreateEvent={onCreateEvent}
+          onSelectDrag={onSelectDrag}
+          fillCellOnSelection={fillCellOnSelection}
           onDragEvent={onDragEvent}
           onDragStart={onDragStart}
           eventStartEditable={eventStartEditable}
@@ -332,6 +372,8 @@ function MonthPagerInner<T>({
       onLongPressEvent,
       onPressMore,
       onCreateEvent,
+      onSelectDrag,
+      fillCellOnSelection,
       onDragEvent,
       onDragStart,
       eventStartEditable,
@@ -343,70 +385,72 @@ function MonthPagerInner<T>({
   );
 
   return (
-    <View ref={containerRef} style={[styles.container, theme.containers.monthContainer]}>
-      {/* The active month's title, above the (shared) weekday header — mirrors the
+    <CalendarSelectionProvider value={selection}>
+      <View ref={containerRef} style={[styles.container, theme.containers.monthContainer]}>
+        {/* The active month's title, above the (shared) weekday header — mirrors the
           dom MonthView's title. The grids below omit their own title/weekdays. */}
-      {showTitle ? (
-        <Text
-          {...slot<TextStyle>("title", {
-            base: styles.monthTitle,
-            themed: [theme.text.monthTitle, { color: theme.colors.text }],
-          })}
-          allowFontScaling={false}
+        {showTitle ? (
+          <Text
+            {...slot<TextStyle>("title", {
+              base: styles.monthTitle,
+              themed: [theme.text.monthTitle, { color: theme.colors.text }],
+            })}
+            allowFontScaling={false}
+          >
+            {format(date, "MMMM yyyy", locale ? { locale } : undefined)}
+          </Text>
+        ) : null}
+        {renderHeaderForMonthView ? (
+          renderHeaderForMonthView(weekDays)
+        ) : (
+          <MonthWeekdayHeader
+            weekDays={weekDays}
+            weekdayFormat={weekdayFormat}
+            locale={locale}
+            slot={slot}
+          />
+        )}
+        <View
+          style={styles.pager}
+          onLayout={(event) => {
+            setPageHeight(event.nativeEvent.layout.height);
+            setContainerWidth(event.nativeEvent.layout.width);
+          }}
         >
-          {format(date, "MMMM yyyy", locale ? { locale } : undefined)}
-        </Text>
-      ) : null}
-      {renderHeaderForMonthView ? (
-        renderHeaderForMonthView(weekDays)
-      ) : (
-        <MonthWeekdayHeader
-          weekDays={weekDays}
-          weekdayFormat={weekdayFormat}
-          locale={locale}
-          slot={slot}
-        />
-      )}
-      <View
-        style={styles.pager}
-        onLayout={(event) => {
-          setPageHeight(event.nativeEvent.layout.height);
-          setContainerWidth(event.nativeEvent.layout.width);
-        }}
-      >
-        <LegendList
-          // Remount when the measured page height changes so the list adopts the
-          // corrected item height. Without this the list can keep the oversized
-          // initial (window-height) seed and clip the last week row.
-          key={pageHeight}
-          ref={listRef}
-          style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
-          data={monthDates}
-          extraData={listExtraData}
-          horizontal
-          recycleItems={false}
-          keyExtractor={keyExtractorList}
-          getFixedItemSize={getFixedItemSize}
-          // On web LegendList ignores these RN scroll props (it leaks them to the
-          // DOM as unknown attributes), so omit them there and disable horizontal
-          // scroll via `webNoScroll`; paging is driven by the arrow keys instead.
-          // Native: paging makes each swipe hard-stop at the adjacent month, while
-          // `freeSwipe` lets momentum carry across months and snap to a boundary.
-          {...(isWeb
-            ? null
-            : {
-                scrollEnabled: swipeEnabled,
-                pagingEnabled: !freeSwipe,
-                snapToIndices: freeSwipe ? snapToIndices : undefined,
-              })}
-          initialScrollIndex={activeIndex}
-          showsHorizontalScrollIndicator={false}
-          viewabilityConfig={PAGE_VIEWABILITY}
-          onViewableItemsChanged={handleViewableItemsChanged}
-          renderItem={renderItem}
-        />
+          <LegendList
+            // Remount when the measured page height changes so the list adopts the
+            // corrected item height. Without this the list can keep the oversized
+            // initial (window-height) seed and clip the last week row.
+            key={pageHeight}
+            ref={listRef}
+            style={isWeb ? [styles.pagerList, styles.webNoScroll] : styles.pagerList}
+            data={monthDates}
+            extraData={listExtraData}
+            horizontal
+            recycleItems={false}
+            keyExtractor={keyExtractorList}
+            getFixedItemSize={getFixedItemSize}
+            // On web LegendList ignores these RN scroll props (it leaks them to the
+            // DOM as unknown attributes), so omit them there and disable horizontal
+            // scroll via `webNoScroll`; paging is driven by the arrow keys instead.
+            // Native: paging makes each swipe hard-stop at the adjacent month, while
+            // `freeSwipe` lets momentum carry across months and snap to a boundary.
+            {...(isWeb
+              ? null
+              : {
+                  scrollEnabled: swipeEnabled,
+                  pagingEnabled: !freeSwipe,
+                  snapToIndices: freeSwipe ? snapToIndices : undefined,
+                })}
+            initialScrollIndex={activeIndex}
+            showsHorizontalScrollIndicator={false}
+            viewabilityConfig={PAGE_VIEWABILITY}
+            onViewableItemsChanged={handleViewableItemsChanged}
+            renderItem={renderItem}
+          />
+        </View>
       </View>
-    </View>
+    </CalendarSelectionProvider>
   );
 }
 

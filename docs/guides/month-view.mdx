@@ -97,5 +97,29 @@ all-day span across days, and `onDragEvent` to drop an event on another day
 (keeping its time of day and duration). See
 [Drag & create](/guides/dragging#on-the-month-grid).
 
+## Selecting, creating, and moving by drag
+
+The month grid is drag-driven too, in whole days. **Hold an empty day and drag**
+across others (press and drag on the web) to sweep a span: `onSelectDrag` reports
+it live as the ordered `[start, end]` days, `onCreateEvent` reports it once on
+release as an all-day range. **Hold an event chip** and drop it on another day and
+`onDragEvent` fires with the event shifted by whole days, keeping its time of day
+and duration. `selectedDates` / `selectedRange` (with `minDate`, `maxDate`,
+`isDateDisabled`) draw the selection.
+
+```tsx
+<Calendar
+  mode="month"
+  /* ... */
+  selectedRange={range ?? undefined}
+  onSelectDrag={selectRange}
+  onCreateEvent={createAllDay}
+  onDragEvent={moveEvent}
+/>
+```
+
+See [Drag & create](/guides/dragging) and
+[Date selection](/guides/selection) for the details.
+
 Looking for a vertically scrolling list of months instead of a pager, or an
 events-free month grid for picking dates? That's [MonthList](/guides/month-list).

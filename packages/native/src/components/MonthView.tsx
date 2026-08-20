@@ -231,6 +231,14 @@ export type MonthViewProps<T> = SlotStyleProps<MonthViewSlot> & {
    */
   onCreateEvent?: (start: Date, end: Date) => void;
   /**
+   * Reports the day span of a create sweep **as it happens**, as the ordered
+   * inclusive `[start, end]` days (both at midnight), so a selection highlight can
+   * follow the drag instead of appearing only on release. Pair it with
+   * `useDateRange`'s `selectRange` to drive `selectedRange`. Enables the sweep on
+   * its own, so it works without `onCreateEvent`.
+   */
+  onSelectDrag?: (start: Date, end: Date) => void;
+  /**
    * Enable drag-to-reschedule: **long-press an event bar** and drag it onto
    * another day (**press and drag** on the web). Called on release with the event
    * and its new `start`/`end`, both shifted by the whole days dragged, so the time
@@ -289,6 +297,7 @@ function MonthViewInner<T>({
   onLongPressEvent,
   onPressMore,
   onCreateEvent,
+  onSelectDrag,
   onDragEvent,
   onDragStart,
   eventStartEditable = true,
@@ -397,7 +406,7 @@ function MonthViewInner<T>({
   );
 
   // ---- drag to create a day span / reschedule an event ----------------------
-  const dragEnabled = onCreateEvent != null || onDragEvent != null;
+  const dragEnabled = onCreateEvent != null || onSelectDrag != null || onDragEvent != null;
   const gridRef = useRef<View>(null);
   // The live drag drives the preview; the ref is what the gesture and the web
   // pointer listeners read, so neither has to be rebuilt as the hover day moves
@@ -485,9 +494,11 @@ function MonthViewInner<T>({
         onDragStart?.(hit.event);
         return;
       }
-      if (onCreateEvent) applyDrag({ kind: "create", anchor: hit.day, hover: hit.day });
+      if (onCreateEvent || onSelectDrag) {
+        applyDrag({ kind: "create", anchor: hit.day, hover: hit.day });
+      }
     },
-    [hitTest, onDragEvent, onCreateEvent, onDragStart, canMoveEvent, applyDrag],
+    [hitTest, onDragEvent, onCreateEvent, onSelectDrag, onDragStart, canMoveEvent, applyDrag],
   );
 
   const extendDrag = useCallback(
@@ -502,8 +513,16 @@ function MonthViewInner<T>({
       applyDrag(
         current.kind === "create" ? { ...current, hover: hit.day } : { ...current, to: hit.day },
       );
+      // A sweep reports its span live, so a selection can track the drag; a move
+      // has nothing to report until it is dropped.
+      if (current.kind === "create") {
+        const a = startOfDay(current.anchor);
+        const b = startOfDay(hit.day);
+        const [lo, hi] = a.getTime() <= b.getTime() ? [a, b] : [b, a];
+        onSelectDrag?.(lo, hi);
+      }
     },
-    [hitTest, applyDrag],
+    [hitTest, applyDrag, onSelectDrag],
   );
 
   const endDrag = useCallback(() => {

@@ -371,10 +371,20 @@ dragged so the **time of day and duration are preserved**. Grab with a
 (`draggable`, `startEditable`, `eventStartEditable`, `eventOverlap`, and
 returning `false` to reject); there is no resize on the month grid.
 
+**On the year grid.** The mini months take the same sweep: `onSelectDrag` reports
+the ordered inclusive `[start, end]` days as you drag (pair it with
+`useDateRange`'s `selectRange`), and `onCreateEvent` reports the all-day range
+once on release. `onSelectDrag` works on the month grid too, so a selection
+highlight can follow a sweep instead of appearing only on release. The year view
+shows dots rather than bars, so it has nothing to pick up: `onDragEvent` is
+month-mode only.
+
 ```tsx
 <Calendar
   mode="month"
   /* ... */
+  selectedRange={range ?? undefined}
+  onSelectDrag={selectRange}
   onCreateEvent={(start, end) =>
     setEvents((prev) => [...prev, { id: makeId(), title: "New", start, end, allDay: true }])
   }
@@ -413,11 +423,11 @@ duration and fields; non-recurring events pass through unchanged.
 
 ### Date selection
 
-Date picking lives on `MonthList`, the vertically-scrolling month list (the
-horizontally-paged `month` view is for browsing events, not picking). A range's
+Date picking lives on `MonthList`, the vertically-scrolling month list. A range's
 endpoints get a filled badge (the `selectedBackground` token) and the span gets
-a centered rounded "pill" band behind it; today keeps its own badge. For ranges,
-the `useDateRange` hook
+a centered rounded "pill" band behind it; today keeps its own badge. `Calendar`
+takes the same props in `month` and `year` modes, so an events calendar can carry
+a selection too. For ranges, the `useDateRange` hook
 owns the state machine: the first press sets the start, the second sets the end
 (auto-swapping if earlier), a third press starts over. Tap two days, or
 long-press and drag to sweep a range (the list auto-scrolls at the edges, so a
@@ -447,6 +457,12 @@ Use `selectedDates` to mark discrete days instead of a range. The band's colour
 and height are the `rangeBackground` / `rangeBandHeight` theme tokens; pass
 `fillCellOnSelection` to `MonthList` to fill the whole cell edge to edge instead
 of the pill.
+
+**In the calendar.** `Calendar` accepts `selectedDates`, `selectedRange`,
+`minDate`, `maxDate`, `isDateDisabled`, and `onSelectDrag` in `month` and `year`
+modes, so the same model works on a grid that also shows events
+(`fillCellOnSelection` applies to the month grid only). On the month grid a sweep starts from empty day space (dragging a chip
+moves the event instead); on the year grid any day starts one.
 
 **Disabled days.** `minDate`, `maxDate` and `isDateDisabled` render days dimmed,
 ignore taps, and keep them out of any selection (drag included). Hand the same
