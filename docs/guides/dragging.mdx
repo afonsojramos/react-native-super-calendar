@@ -4,8 +4,9 @@ sidebarTitle: Drag & create
 description: Move, resize, reschedule across days, and create events by dragging.
 ---
 
-All of this lives on the week/day grid and is opt-in: pass the relevant handler
-and update your own event state in response.
+Everything here is opt-in: pass the relevant handler and update your own event
+state in response. Most of it lives on the week/day grid; the month and year
+grids get their own day-granular versions, covered at the end.
 
 ## Move and resize
 
@@ -174,12 +175,18 @@ in-progress sweep before it commits.
   "drag to create a range."
 </Note>
 
-### On the month grid
+## On the month and year grids
 
-`onCreateEvent` also works in `month` mode (web): press a day and drag across others
-to sketch an **all-day** span, then release. `start` is midnight of the first day and
-`end` is midnight after the last (exclusive). A plain click still fires `onPressDay`,
-and each day in the sweep carries `data-creating` for styling (see
+The month and year grids work in whole days rather than minutes, so the same three
+handlers do day-granular versions of the gestures above. On a device you **hold and
+drag**; on the web you **press and drag**.
+
+### Sweep out a span
+
+`onCreateEvent` sketches an **all-day** span: start on an empty day and drag across
+others. `start` is midnight of the first day and `end` is midnight after the last
+(exclusive), which is the shape an all-day event wants. A plain tap still fires
+`onPressDay`, and each day in the sweep carries `data-creating` for styling (see
 [Styling](/guides/styling)).
 
 ```tsx
@@ -192,7 +199,37 @@ and each day in the sweep carries `data-creating` for styling (see
 />
 ```
 
+`onSelectDrag` reports the **same sweep** as it happens, with the ordered inclusive
+`[start, end]` days, so a selection highlight can follow the drag. Set either
+handler (or both) to enable the gesture — see
+[Date selection](/guides/selection) for wiring it to `useDateRange`.
+
+On the year grid the sweep runs across a mini month's days on a device, and across
+mini months on the web.
+
+### Move an event to another day
+
+In `month` mode, `onDragEvent` picks an event chip up and drops it on another day.
+The event shifts by whole days, keeping its **time of day and its duration**, so a
+9–10am standup dropped three days later is still 9–10am. Multi-day bars move as a
+whole, from wherever you grabbed them.
+
+```tsx
+<Calendar
+  mode="month"
+  /* ... */
+  onDragEvent={(event, start, end) =>
+    setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, start, end } : e)))
+  }
+/>
+```
+
+`draggable: false`, `startEditable: false`, and `disabled: true` lock an event here
+exactly as they do on the time grid, and `onDragStart` fires on grab for haptics.
+The year view summarises events as dots rather than chips, so it has nothing to
+pick up: there is no drag-to-move there.
+
 ## Tuning the snap
 
-`dragStepMinutes` (default 15) controls how move, resize, and create snap. Set it
-to `5`, `30`, etc. to match your grid's granularity.
+`dragStepMinutes` (default 15) controls how move, resize, and create snap on the
+week/day grid. The month and year grids always snap to whole days.

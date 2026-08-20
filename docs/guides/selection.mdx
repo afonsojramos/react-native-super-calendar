@@ -8,6 +8,9 @@ month list. It takes the selection props and renders a range as filled endpoint
 badges with a centered rounded "pill" band across the span; today keeps its own
 badge. Pass `fillCellOnSelection` to fill the whole cell instead of the pill.
 
+`Calendar` takes the same props in `month` and `year` modes, so an events
+calendar can carry a selection too — see [In the calendar](#in-the-calendar).
+
 ## Range selection with useDateRange
 
 `useDateRange` owns the start/end state machine: the first press sets the start,
@@ -79,3 +82,34 @@ const { range, onPressDate, selectRange } = useDateRange({ minDate });
   Selection is a `rangeBackground` band over the span; there is no per-day selected circle by
   default, so the "today" badge stays distinct. See [Theming](/guides/theming) for the token.
 </Note>
+
+## In the calendar
+
+`Calendar` accepts `selectedDates`, `selectedRange`, `fillCellOnSelection`,
+`minDate`, `maxDate`, `isDateDisabled`, and `onSelectDrag` in `month` and `year`
+modes, drawn exactly as they are in the picker. So the same selection model works
+on top of a calendar that also shows events — pick a range to filter a report,
+block out a holiday, choose the days a new event should span.
+
+```tsx
+const { range, onPressDate, selectRange } = useDateRange();
+
+<Calendar
+  mode="month"
+  date={date}
+  events={events}
+  onChangeDate={setDate}
+  selectedRange={range ?? undefined}
+  onPressDay={onPressDate}
+  onSelectDrag={selectRange}
+  onPressEvent={openEvent}
+/>;
+```
+
+Tap two days, or **hold a day and drag** across others (press and drag on the web)
+to sweep the range out in one gesture. On the month grid the drag starts from empty
+day space, so dragging an event chip still moves the event
+(see [Drag & create](/guides/dragging)); on the year grid any day starts a sweep.
+
+Add `onCreateEvent` alongside `onSelectDrag` and the same sweep also reports an
+all-day range on release, which is how you turn a swept selection into an event.

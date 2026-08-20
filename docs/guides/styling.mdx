@@ -134,6 +134,8 @@ variant works on either slot (e.g. `dayBadge: "data-[today]:bg-blue-600"`).
 | `data-outside`  | day / badge       | the day belongs to an adjacent month    |
 | `data-disabled` | day / badge       | the day is disabled (`min`/`maxDate`)   |
 | `data-creating` | day / badge       | the day is inside a drag-to-create span |
+| `data-dragover` | month day         | a dragged event would drop on this day  |
+| `data-events`   | year day          | the day holds at least one event        |
 | `data-dragging` | time-grid event   | the event is being dragged              |
 
 Every slotted element also carries a stable `data-slot="<name>"` attribute, handy for
@@ -205,6 +207,25 @@ Native's `Agenda` supports `dayHeader`, `eventRow`, and `empty`.
 | `eventRow`  | The button wrapping each event |
 | `event`     | The default event card         |
 | `empty`     | The "No events" placeholder    |
+
+### YearView
+
+Both renderers support `grid`, `month`, `monthTitle`, `weekdays`, `weekday`,
+`week`, `day`, `dayBadge`, `rangeBand`, and `eventDot` (plus `dayText` on React
+Native).
+
+| Slot         | Element                               |
+| ------------ | ------------------------------------- |
+| `grid`       | The twelve-month container            |
+| `month`      | Each mini month                       |
+| `monthTitle` | A mini month's title                  |
+| `weekdays`   | A mini month's weekday-initials row   |
+| `weekday`    | Each weekday initial                  |
+| `week`       | Each week row of a mini month         |
+| `day`        | Each day cell                         |
+| `dayBadge`   | The round today/selected highlight    |
+| `rangeBand`  | The selection band layer behind a day |
+| `eventDot`   | The dot under a day that holds events |
 
 ### MonthList (scrolling picker)
 
