@@ -34,6 +34,7 @@ import {
   StyleSheet,
   type StyleProp,
   Text,
+  type TextStyle,
   useWindowDimensions,
   View,
   type ViewStyle,
@@ -842,7 +843,7 @@ const HourRow = ({
         <View style={{ width: hourColumnWidth }}>{hourComponent(hour, ampm)}</View>
       ) : (
         <Text
-          {...slot("hourLabel", {
+          {...slot<TextStyle>("hourLabel", {
             base: [styles.hourLabel, { width: hourColumnWidth }],
             themed: [theme.text.hourLabel, { color: theme.colors.textMuted }],
           })}
@@ -2557,7 +2558,7 @@ const DefaultHeader = ({
       <View style={[styles.weekNumberGutter, { width: hourColumnWidth }]}>
         {showWeekNumber && hourColumnWidth > 0 && days[0] ? (
           <Text
-            {...slot("weekNumber", {
+            {...slot<TextStyle>("weekNumber", {
               themed: [theme.text.hourLabel, { color: theme.colors.textMuted }],
             })}
             allowFontScaling={false}
@@ -2623,7 +2624,7 @@ const DayHeader = ({
   const content = (
     <>
       <Text
-        {...slot("columnHeaderWeekday", {
+        {...slot<TextStyle>("columnHeaderWeekday", {
           themed: [{ color: theme.colors.textMuted }, theme.text.columnHeaderWeekday],
         })}
         allowFontScaling={false}
@@ -2641,7 +2642,7 @@ const DayHeader = ({
         })}
       >
         <Text
-          {...slot("columnHeaderDateText", {
+          {...slot<TextStyle>("columnHeaderDateText", {
             themed: [
               theme.text.dayNumber,
               // The state colour stays last so a themed dayNumber can't break the

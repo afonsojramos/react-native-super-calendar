@@ -10,6 +10,7 @@ import {
   StyleSheet,
   type StyleProp,
   Text,
+  type TextStyle,
   TouchableOpacity,
   View,
   type ViewStyle,
@@ -531,7 +532,9 @@ function MonthViewInner<T>({
             })}
           >
             <Text
-              {...slot("dayBadgeText", { themed: [theme.text.dateCell, { color: dateColor }] })}
+              {...slot<TextStyle>("dayBadgeText", {
+                themed: [theme.text.dateCell, { color: dateColor }],
+              })}
               allowFontScaling={false}
             >
               {format(day, "d")}
@@ -549,7 +552,7 @@ function MonthViewInner<T>({
         ))}
         {hiddenCount > 0 ? (
           <Text
-            {...slot("more", {
+            {...slot<TextStyle>("more", {
               base: styles.moreLabel,
               themed: [theme.text.more, { color: theme.colors.textMuted }],
             })}
@@ -578,7 +581,7 @@ function MonthViewInner<T>({
     <View style={styles.root}>
       {showTitle ? (
         <Text
-          {...slot("title", {
+          {...slot<TextStyle>("title", {
             base: styles.title,
             themed: [theme.text.monthTitle, { color: theme.colors.text }],
           })}
@@ -597,7 +600,7 @@ function MonthViewInner<T>({
           {weekdayLabels.map((day) => (
             <Text
               key={day.toISOString()}
-              {...slot("weekday", {
+              {...slot<TextStyle>("weekday", {
                 base: styles.weekdayLabel,
                 themed: [theme.text.weekday, { color: theme.colors.textMuted }],
               })}

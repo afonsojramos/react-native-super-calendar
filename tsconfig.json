@@ -22,6 +22,6 @@
       "@super-calendar/dom": ["./packages/dom/src/index.ts"]
     }
   },
-  "include": ["packages/*/src"],
+  "include": ["packages/*/src", "tests/types"],
   "exclude": ["**/dist", "**/node_modules"]
 }

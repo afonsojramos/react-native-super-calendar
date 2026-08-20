@@ -1,5 +1,5 @@
 import { addDays, startOfDay } from "date-fns";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, type TextStyle, View } from "react-native";
 import { useCalendarTheme } from "../theme";
 import type { CalendarEvent, CalendarMode, EventKeyExtractor, RenderEvent } from "../types";
 import { useSlots } from "../utils/slots";
@@ -64,7 +64,7 @@ export function AllDayLane<T>({
             and right-aligned against the timed columns. Centered vertically so it
             lines up with the chips whether the lane holds one event or several. */}
         <Text
-          {...slot("allDayLabel", {
+          {...slot<TextStyle>("allDayLabel", {
             base: styles.label,
             themed: { color: theme.colors.textMuted },
           })}

@@ -21,6 +21,7 @@ import {
   StyleSheet,
   type StyleProp,
   Text,
+  type TextStyle,
   View,
   type ViewStyle,
 } from "react-native";
@@ -440,7 +441,7 @@ function MonthListInner<T>({
             renderMonthHeader(item)
           ) : (
             <Text
-              {...slot("title", {
+              {...slot<TextStyle>("title", {
                 base: styles.monthTitle,
                 themed: [styles.monthTitleText, { color: theme.colors.text }],
               })}
@@ -560,7 +561,7 @@ function MonthListInner<T>({
           {weekDays.map((day) => (
             <Text
               key={day.toISOString()}
-              {...slot("weekday", {
+              {...slot<TextStyle>("weekday", {
                 base: styles.weekdayLabel,
                 themed: [styles.weekdayLabelText, { color: theme.colors.textMuted }],
               })}

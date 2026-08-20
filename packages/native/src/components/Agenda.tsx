@@ -1,7 +1,7 @@
 import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react-native";
 import { format, isSameDay, type Locale, startOfDay } from "date-fns";
 import { type ComponentType, type ReactElement, useCallback, useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, type TextStyle, View } from "react-native";
 import { useCalendarTheme } from "../theme";
 import type { CalendarEvent, EventKeyExtractor, RenderEvent } from "../types";
 import { createSlots, type SlotStyleProps } from "../utils/slots";
@@ -83,7 +83,7 @@ export function Agenda<T>({
         const isHighlighted = activeDate ? isSameDay(item.date, activeDate) : getIsToday(item.date);
         return (
           <Text
-            {...slot("dayHeader", {
+            {...slot<TextStyle>("dayHeader", {
               base: styles.header,
               themed: [
                 styles.headerText,
@@ -124,7 +124,7 @@ export function Agenda<T>({
   if (rows.length === 0) {
     return (
       <Text
-        {...slot("empty", {
+        {...slot<TextStyle>("empty", {
           base: styles.empty,
           themed: [styles.emptyText, { color: theme.colors.textMuted }],
         })}
