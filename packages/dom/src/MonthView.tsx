@@ -1,5 +1,6 @@
 import {
   addDays,
+  differenceInCalendarDays,
   endOfMonth,
   format,
   isSameMonth,
@@ -25,6 +26,7 @@ import {
   dayBadgeKind,
   type DateRange,
   type DateSelectionConstraints,
+  dayRangeFromDrag,
   type EventAccessibilityLabeler,
   groupEventsByDay,
   isBackgroundEvent,
@@ -33,6 +35,7 @@ import {
   type MonthGridDay,
   type MonthGridWeek,
   rangeBandKind,
+  shiftEventDays,
   type WeekdayFormat,
   type WeekStartsOn,
 } from "@super-calendar/core";
@@ -66,6 +69,9 @@ const DATE_ROW = 24;
 const CHIP_HEIGHT = 18;
 const CHIP_GAP = 2;
 const CELL_PAD = 4;
+// Pointer travel (px, Manhattan distance) before a press on a chip becomes a
+// drag-to-move rather than a click that opens the event.
+const MOVE_THRESHOLD_PX = 4;
 
 /** Props passed to a custom month event chip renderer. */
 export interface DomMonthEventArgs<T = unknown> {
@@ -148,6 +154,22 @@ export interface MonthViewProps<T = unknown>
    */
   onCreateEvent?: (start: Date, end: Date) => void;
   /**
+   * Enables drag-to-select and reports the swept span live, as the ordered
+   * inclusive `[start, end]` days (both at midnight) — pair it with
+   * `useDateRange`'s `selectRange` to drive `selectedRange`. Fires on every day the
+   * pointer crosses, so the highlight follows the drag; `onCreateEvent` (when also
+   * set) fires once on release. Either handler enables the same sweep gesture.
+   */
+  onSelectDrag?: (start: Date, end: Date) => void;
+  /**
+   * Enables drag-to-move: drag an event chip onto another day and release to fire
+   * this with the event and its new bounds, shifted by whole days (the time of day
+   * and duration are kept). Update your own event state in response. Respects each
+   * event's `draggable` / `startEditable` / `disabled` flags. The day under the
+   * pointer carries `data-dragover` for styling.
+   */
+  onDragEvent?: (event: CalendarEvent<T>, start: Date, end: Date) => void | boolean;
+  /**
    * When events are shown, also make the day cells keyboard-navigable: a single
    * roving tab stop, arrow keys move the focus, Enter opens the day (`onPressDay`).
    * Default false, so keyboard focus moves through events only. The date picker
@@ -198,28 +220,39 @@ function dayCellDefault(
  * rounded strip (the default) or fill the whole cell (`fillCell`). Returns null
  * for days with no band. Endpoints get the leading/trailing pill rounding. Its
  * geometry is structural; only the fill colour is themed.
+ *
+ * In events mode the strip tracks the compact date badge instead of the picker's
+ * tall cell, so it reads as a band across the dates rather than a block over the
+ * event chips (and matches the native renderer's month grid).
  */
 function rangeBandDefault(
   day: MonthGridDay,
   theme: DomCalendarTheme,
   fillCell: boolean,
+  eventsMode: boolean,
 ): SlotDefault | null {
   const kind = rangeBandKind(day, fillCell);
   if (kind === "none") return null;
   const fill = kind === "fill";
-  const inset = fill ? 0 : Math.max(0, (theme.cellHeight - theme.rangeBandHeight) / 2);
-  const radius = fill ? 0 : theme.rangeBandHeight / 2;
+  const badgeSize = eventsMode ? DATE_ROW - 2 : theme.dayBadgeSize;
+  const bandHeight = eventsMode ? badgeSize : theme.rangeBandHeight;
+  const inset = fill ? 0 : eventsMode ? CELL_PAD : Math.max(0, (theme.cellHeight - bandHeight) / 2);
+  const radius = fill ? 0 : bandHeight / 2;
   const rounding = bandRounding(kind);
   // Cap the pill at the endpoint circles: a start/end band stops at the circle's
   // outer edge (half a badge in from the cell centre) rather than spilling to the
-  // cell edge, so no band shows in the empty space beside the day circles.
-  const cap = `calc(50% - ${theme.dayBadgeSize / 2}px)`;
+  // cell edge, so no band shows in the empty space beside the day circles. Events
+  // mode puts the badge in the cell's corner instead of its centre, so there the
+  // band spans the whole cell and only rounds its outer ends.
+  const cap = eventsMode ? 0 : `calc(50% - ${badgeSize / 2}px)`;
   const base: CSSProperties = {
     position: "absolute",
     left: rounding.start ? cap : 0,
     right: rounding.end ? cap : 0,
     top: inset,
-    bottom: inset,
+    // An events cell is far taller than its date row, so the strip is sized from
+    // the badge rather than stretched to the cell's bottom.
+    ...(fill || !eventsMode ? { bottom: inset } : { height: bandHeight }),
     zIndex: 0,
   };
   if (rounding.start) {
@@ -443,6 +476,8 @@ export function MonthView<T = unknown>({
   isDateDisabled,
   onPressDay,
   onCreateEvent,
+  onSelectDrag,
+  onDragEvent,
   keyboardDayNavigation = false,
   className,
   style,
@@ -573,8 +608,11 @@ export function MonthView<T = unknown>({
   const gridRef = useRef<HTMLDivElement>(null);
   const focusKey = format(focusedDate, "yyyy-MM-dd");
 
-  // Drag-to-create (events mode): press a day and drag across others to sketch an
-  // all-day span, released on a window pointerup so a drop anywhere still commits.
+  // Drag-to-create / drag-to-select (events mode): press a day and drag across
+  // others to sketch an all-day span, released on a window pointerup so a drop
+  // anywhere still commits. `onSelectDrag` reports the span live during the sweep;
+  // `onCreateEvent` reports it once on release. Either handler enables the gesture.
+  const sweepEnabled = onCreateEvent != null || onSelectDrag != null;
   const [creating, setCreating] = useState<{ anchor: number; hover: number } | null>(null);
   const creatingRef = useRef(creating);
   creatingRef.current = creating;
@@ -583,7 +621,7 @@ export function MonthView<T = unknown>({
   // (it must not also open the day via onPressDay).
   const suppressClickRef = useRef(false);
   const beginCreate = (day: Date) => {
-    if (!onCreateEvent) return;
+    if (!sweepEnabled) return;
     const t = startOfDay(day).getTime();
     movedRef.current = false;
     setCreating({ anchor: t, hover: t });
@@ -594,6 +632,9 @@ export function MonthView<T = unknown>({
     if (t !== creatingRef.current.hover) {
       movedRef.current = true;
       setCreating((c) => (c ? { ...c, hover: t } : c));
+      const anchor = creatingRef.current.anchor;
+      const [lo, hi] = anchor <= t ? [anchor, t] : [t, anchor];
+      onSelectDrag?.(new Date(lo), new Date(hi));
     }
   };
   const isCreating = creating !== null;
@@ -604,13 +645,71 @@ export function MonthView<T = unknown>({
       setCreating(null);
       if (!c || !movedRef.current) return;
       suppressClickRef.current = true;
-      const lo = Math.min(c.anchor, c.hover);
-      const hi = Math.max(c.anchor, c.hover);
-      onCreateEvent?.(new Date(lo), addDays(new Date(hi), 1));
+      const range = dayRangeFromDrag(new Date(c.anchor), new Date(c.hover));
+      onCreateEvent?.(range.start, range.end);
     };
     window.addEventListener("pointerup", finish);
     return () => window.removeEventListener("pointerup", finish);
   }, [isCreating, onCreateEvent]);
+
+  // Drag-to-move: pick an event chip up and drop it on another day. The drag only
+  // arms on pointerdown; it activates once the pointer travels past a small
+  // threshold, so a plain click still opens the event. The day under the pointer
+  // comes from the cells' own pointerenter (the chips go non-interactive while a
+  // drag is live), so a drop lands on the day it visually covers.
+  const [moving, setMoving] = useState<{
+    event: CalendarEvent<T>;
+    from: number;
+    over: number;
+    active: boolean;
+  } | null>(null);
+  const movingRef = useRef(moving);
+  movingRef.current = moving;
+  const moveOriginRef = useRef({ x: 0, y: 0 });
+  const canDragEvent = (event: CalendarEvent<T>) =>
+    onDragEvent != null &&
+    !event.disabled &&
+    event.draggable !== false &&
+    (event.startEditable ?? true);
+  const beginMove = (event: CalendarEvent<T>, day: Date, clientX: number, clientY: number) => {
+    const t = startOfDay(day).getTime();
+    moveOriginRef.current = { x: clientX, y: clientY };
+    setMoving({ event, from: t, over: t, active: false });
+  };
+  const extendMove = (day: Date) => {
+    const t = startOfDay(day).getTime();
+    setMoving((m) => (m && m.over !== t ? { ...m, over: t } : m));
+  };
+  const isMoveArmed = moving !== null;
+  const isMoving = moving?.active === true;
+  useEffect(() => {
+    if (!isMoveArmed) return;
+    const onPointerMove = (e: PointerEvent) => {
+      if (movingRef.current?.active !== false) return;
+      const origin = moveOriginRef.current;
+      if (Math.abs(e.clientX - origin.x) + Math.abs(e.clientY - origin.y) < MOVE_THRESHOLD_PX)
+        return;
+      setMoving((m) => (m ? { ...m, active: true } : m));
+    };
+    const finish = () => {
+      const m = movingRef.current;
+      setMoving(null);
+      if (!m?.active) return;
+      // A drag that ends where it began is a no-op, but it must still swallow the
+      // click so the chip doesn't also report a press.
+      suppressClickRef.current = true;
+      const delta = differenceInCalendarDays(new Date(m.over), new Date(m.from));
+      if (delta === 0) return;
+      const next = shiftEventDays(m.event.start, m.event.end, delta);
+      onDragEvent?.(m.event, next.start, next.end);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", finish);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", finish);
+    };
+  }, [isMoveArmed, onDragEvent]);
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     let next: Date | null = null;
     if (e.key === "ArrowLeft") next = addDays(focusedDate, -1);
@@ -672,6 +771,12 @@ export function MonthView<T = unknown>({
         // Arrow-key roving applies whenever the day cells are a tab stop: the
         // picker always, events mode only when keyboardDayNavigation is set.
         onKeyDown={dayRoving ? onKeyDown : undefined}
+        // A drag that ends over a cell other than the one it started on produces no
+        // click, so the flag it armed would otherwise swallow the next real click.
+        // Capture phase, so it still runs when a chip stops its own pointerdown.
+        onPointerDownCapture={() => {
+          suppressClickRef.current = false;
+        }}
         {...slot("grid")}
       >
         {weeks.map((week, weekIndex) => {
@@ -732,7 +837,7 @@ export function MonthView<T = unknown>({
                     <div key={day.id} role="gridcell" aria-hidden style={{ height: cellHeight }} />
                   );
                 }
-                const band = rangeBandDefault(day, theme, fillCellOnSelection);
+                const band = rangeBandDefault(day, theme, fillCellOnSelection, eventsMode);
                 const label = format(
                   day.date,
                   "EEEE, d MMMM yyyy",
@@ -743,6 +848,7 @@ export function MonthView<T = unknown>({
                   creating != null &&
                   dayTime >= Math.min(creating.anchor, creating.hover) &&
                   dayTime <= Math.max(creating.anchor, creating.hover);
+                const isDropTarget = isMoving && moving?.over === dayTime;
                 // Present/absent data-* attributes so consumers can style day state
                 // with CSS/Tailwind variants (e.g. `data-[today]:bg-blue-500`).
                 const dayData = dataState({
@@ -753,6 +859,7 @@ export function MonthView<T = unknown>({
                   "data-outside": !day.isCurrentMonth,
                   "data-disabled": day.isDisabled,
                   "data-creating": inCreate,
+                  "data-dragover": isDropTarget,
                 });
 
                 if (eventsMode) {
@@ -785,21 +892,38 @@ export function MonthView<T = unknown>({
                       aria-disabled={day.isDisabled || undefined}
                       aria-label={label}
                       {...dayCellProps}
-                      // Drag-to-create disables touch scroll on the cell so a swipe
-                      // sketches a span instead of scrolling the grid.
+                      // Drag-to-create and drag-to-move disable touch scroll on the
+                      // cell so a swipe sketches a span (or carries a chip) instead
+                      // of scrolling the grid.
                       style={
-                        onCreateEvent
-                          ? { ...dayCellProps.style, touchAction: "none" }
+                        sweepEnabled || onDragEvent
+                          ? {
+                              ...dayCellProps.style,
+                              touchAction: "none",
+                              ...(isDropTarget
+                                ? {
+                                    outline: `2px solid ${theme.selectedBackground}`,
+                                    outlineOffset: -2,
+                                  }
+                                : null),
+                            }
                           : dayCellProps.style
                       }
                       onPointerDown={
-                        onCreateEvent && !day.isDisabled
+                        sweepEnabled && !day.isDisabled
                           ? (e) => {
                               if (e.button === 0) beginCreate(day.date);
                             }
                           : undefined
                       }
-                      onPointerEnter={onCreateEvent ? () => extendCreate(day.date) : undefined}
+                      onPointerEnter={
+                        sweepEnabled || onDragEvent
+                          ? () => {
+                              extendCreate(day.date);
+                              if (movingRef.current && !day.isDisabled) extendMove(day.date);
+                            }
+                          : undefined
+                      }
                       onClick={
                         day.isDisabled
                           ? undefined
@@ -832,18 +956,57 @@ export function MonthView<T = unknown>({
                           overflowing right across the days they span. Rendered here
                           (not a row overlay) so each bar is valid content of its
                           start day's gridcell and reads with that day. Made
-                          non-interactive mid drag-create so a sweep reaches the
-                          cells beneath. */}
+                          non-interactive mid drag-create (and mid drag-move) so a
+                          sweep reaches the cells beneath. */}
                       {barSegs
                         .filter((b) => b.startCol === dayCol)
                         .map((b) => {
                           const span = b.endCol - b.startCol + 1;
+                          const draggable = canDragEvent(b.seg.event);
+                          const isDragged = isMoving && moving?.event === b.seg.event;
                           return (
                             <button
                               key={`bar-${b.seg.event.start.toISOString()}:${b.seg.event.title}:${b.seg.lane}`}
                               type="button"
+                              onPointerDown={
+                                draggable
+                                  ? (e) => {
+                                      if (e.button !== 0) return;
+                                      // A press on a chip picks the event up, so it
+                                      // must not also start a create sweep on the
+                                      // cell underneath.
+                                      e.stopPropagation();
+                                      // A bar can span several days, so grab the day
+                                      // actually under the pointer rather than the
+                                      // bar's start day — the drop then shifts by
+                                      // what the user sees them move. An unmeasured
+                                      // bar falls back to its first day.
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const col =
+                                        rect.width > 0
+                                          ? Math.min(
+                                              span - 1,
+                                              Math.max(
+                                                0,
+                                                Math.floor(
+                                                  (e.clientX - rect.left) / (rect.width / span),
+                                                ),
+                                              ),
+                                            )
+                                          : 0;
+                                      const grabbed = week.days[b.startCol + col];
+                                      if (grabbed) {
+                                        beginMove(b.seg.event, grabbed.date, e.clientX, e.clientY);
+                                      }
+                                    }
+                                  : undefined
+                              }
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (suppressClickRef.current) {
+                                  suppressClickRef.current = false;
+                                  return;
+                                }
                                 onPressEvent?.(b.seg.event);
                               }}
                               {...barChipButton}
@@ -868,7 +1031,9 @@ export function MonthView<T = unknown>({
                                   CHIP_GAP +
                                   b.seg.lane * (CHIP_HEIGHT + CHIP_GAP),
                                 height: CHIP_HEIGHT,
-                                pointerEvents: isCreating ? "none" : "auto",
+                                pointerEvents: isCreating || isMoving ? "none" : "auto",
+                                ...(draggable ? { touchAction: "none", cursor: "grab" } : null),
+                                ...(isDragged ? { opacity: 0.4 } : null),
                                 zIndex: 2,
                               }}
                             >
