@@ -1,4 +1,5 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
+import { useState } from "react";
 import type { CalendarEvent } from "../../types";
 import { YearView } from "../YearView";
 
@@ -78,8 +79,8 @@ describe("YearView drag to select", () => {
   const GRID = { width: 140, height: 120 };
 
   type PanHandlers = Record<string, (gesture?: { x: number; y: number }) => void>;
-  // One pan is built per mini month, in month order, on every render — so the
-  // current batch is the last twelve.
+  // One pan is built per mini month, in month order, so the current batch is
+  // the last twelve gestures the mock recorded.
   const monthPan = (monthIndex: number): PanHandlers => {
     const { __gestures } = jest.requireMock("react-native-gesture-handler") as {
       __gestures: { handlers: PanHandlers }[];
@@ -110,6 +111,97 @@ describe("YearView drag to select", () => {
     const [start, end] = onCreateEvent.mock.calls[0] as [Date, Date];
     expect(start).toEqual(new Date(2026, 6, 15));
     expect(end).toEqual(new Date(2026, 6, 18));
+  });
+
+  it("lets the next tap through after a sweep, which leaves no press behind", () => {
+    const onPressDay = jest.fn();
+    const { getByTestId, getByLabelText } = render(
+      <YearView
+        date={new Date(2026, 6, 20)}
+        weekStartsOn={1}
+        onSelectDrag={jest.fn()}
+        onPressDay={onPressDay}
+      />,
+    );
+    fireEvent(getByTestId("year-month-grid-6"), "layout", { nativeEvent: { layout: GRID } });
+
+    act(() => monthPan(6).onStart({ x: 50, y: 50 }));
+    act(() => monthPan(6).onUpdate({ x: 90, y: 50 }));
+    act(() => monthPan(6).onFinalize());
+
+    // A pan never produces a press, so nothing consumed a "swallow the next tap"
+    // flag; the tap after the sweep is a fresh interaction.
+    fireEvent.press(getByLabelText(/Monday, 20 July 2026/));
+    expect(onPressDay).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a hold that lands on a blank adjacent-month cell", () => {
+    const onSelectDrag = jest.fn();
+    const onCreateEvent = jest.fn();
+    const { getByTestId } = render(
+      <YearView
+        date={new Date(2026, 6, 20)}
+        weekStartsOn={1}
+        onSelectDrag={onSelectDrag}
+        onCreateEvent={onCreateEvent}
+      />,
+    );
+    fireEvent(getByTestId("year-month-grid-6"), "layout", { nativeEvent: { layout: GRID } });
+
+    // Row 0, col 0 of July's mini month is Mon 29 June: drawn blank, so it can
+    // neither anchor a sweep nor be swept onto.
+    act(() => monthPan(6).onStart({ x: 10, y: 10 }));
+    act(() => monthPan(6).onUpdate({ x: 50, y: 50 }));
+    act(() => monthPan(6).onFinalize());
+    expect(onSelectDrag).not.toHaveBeenCalled();
+    expect(onCreateEvent).not.toHaveBeenCalled();
+  });
+
+  it("keeps disabled days out of the sweep", () => {
+    const onCreateEvent = jest.fn();
+    const { getByTestId } = render(
+      <YearView
+        date={new Date(2026, 6, 20)}
+        weekStartsOn={1}
+        maxDate={new Date(2026, 6, 16)}
+        onCreateEvent={onCreateEvent}
+      />,
+    );
+    fireEvent(getByTestId("year-month-grid-6"), "layout", { nativeEvent: { layout: GRID } });
+
+    act(() => monthPan(6).onStart({ x: 50, y: 50 })); // Wed 15 July
+    act(() => monthPan(6).onUpdate({ x: 90, y: 50 })); // Fri 17 July, past maxDate
+    act(() => monthPan(6).onFinalize());
+    expect(onCreateEvent).not.toHaveBeenCalled();
+  });
+
+  it("keeps one pan per mini month while a sweep is running", () => {
+    const { __gestures } = jest.requireMock("react-native-gesture-handler") as {
+      __gestures: unknown[];
+    };
+    // The documented wiring: onSelectDrag drives state in the consumer, so every
+    // swept day re-renders the parent and hands YearView fresh inline handlers.
+    // Rebuilding the pan mid-drag would cancel the drag running through it.
+    function Harness() {
+      const [range, setRange] = useState<{ start: Date; end: Date } | null>(null);
+      return (
+        <YearView
+          date={new Date(2026, 6, 20)}
+          weekStartsOn={1}
+          selectedRange={range ?? undefined}
+          onSelectDrag={(start, end) => setRange({ start, end })}
+          onCreateEvent={() => {}}
+        />
+      );
+    }
+    const { getByTestId } = render(<Harness />);
+    fireEvent(getByTestId("year-month-grid-6"), "layout", { nativeEvent: { layout: GRID } });
+
+    act(() => monthPan(6).onStart({ x: 50, y: 50 }));
+    const afterStart = __gestures.length;
+    act(() => monthPan(6).onUpdate({ x: 90, y: 50 }));
+    act(() => monthPan(6).onUpdate({ x: 110, y: 50 }));
+    expect(__gestures.length).toBe(afterStart);
   });
 
   it("commits nothing when the hold never leaves its day", () => {

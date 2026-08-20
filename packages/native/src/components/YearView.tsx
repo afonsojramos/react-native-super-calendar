@@ -89,7 +89,7 @@ export type YearViewProps<T = unknown> = SlotStyleProps<YearViewSlot> & {
   onPressMonth?: (month: Date) => void;
   /**
    * Enables drag-to-select and reports the swept span live, as the ordered
-   * inclusive `[start, end]` days (both at midnight) — pair it with
+   * inclusive `[start, end]` days (both at midnight). Pair it with
    * `useDateRange`'s `selectRange` to drive `selectedRange`. Fires on every day the
    * drag crosses, so the highlight follows it; `onCreateEvent` (when also set)
    * fires once on release. Either handler enables the same sweep: hold a day and
@@ -175,6 +175,11 @@ function YearViewInner<T>({
   const sweepRef = useRef(sweep);
   sweepRef.current = sweep;
   const movedRef = useRef(false);
+  // Web only: a committed sweep has to swallow the click the browser fires next,
+  // so it doesn't also open the day it landed on. A pan never leaves a press
+  // behind, so the flag would otherwise outlive its interaction and eat the next
+  // unrelated tap; every fresh sweep clears it. Mirrors MonthView.
+  const suppressPressRef = useRef(false);
 
   const isSelectable = useCallback(
     (day: Date) => isDateSelectable(day, { minDate, maxDate, isDateDisabled }),
@@ -182,6 +187,7 @@ function YearViewInner<T>({
   );
   const beginSweep = useCallback((day: Date) => {
     const time = startOfDay(day).getTime();
+    suppressPressRef.current = false;
     movedRef.current = false;
     setSweep({ anchor: time, hover: time });
   }, []);
@@ -202,6 +208,7 @@ function YearViewInner<T>({
     const current = sweepRef.current;
     setSweep(null);
     if (!current || !movedRef.current) return;
+    if (isWeb) suppressPressRef.current = true;
     const range = monthCreateRange(new Date(current.anchor), new Date(current.hover));
     onCreateEvent?.(range.start, range.end);
   }, [onCreateEvent]);
@@ -217,11 +224,11 @@ function YearViewInner<T>({
     return () => target.removeEventListener?.("pointerup", finishSweep);
   }, [sweepEnabled, finishSweep]);
 
-  // Swallow the tap that follows a committed sweep, so it doesn't open a day too.
+  // Swallow the click trailing a committed web sweep, so it doesn't open a day too.
   const pressDay = useCallback(
     (day: Date) => {
-      if (movedRef.current) {
-        movedRef.current = false;
+      if (suppressPressRef.current) {
+        suppressPressRef.current = false;
         return;
       }
       onPressDay?.(day);
@@ -230,7 +237,14 @@ function YearViewInner<T>({
   );
 
   return (
-    <ScrollView onLayout={handleLayout} showsVerticalScrollIndicator scrollEnabled={sweep == null}>
+    <ScrollView
+      onLayout={handleLayout}
+      showsVerticalScrollIndicator
+      // Native only: once the hold has armed a sweep, stop the list scrolling
+      // under the finger. On the web a press arms it immediately, so freezing
+      // there would cost every touch scroll; the browser arbitrates instead.
+      scrollEnabled={isWeb || sweep == null}
+    >
       <View {...slot("grid", { base: styles.grid })}>
         {months.map((month, monthIndex) => {
           const weeks = monthWeeks[monthIndex];
@@ -288,6 +302,7 @@ function YearViewInner<T>({
               </View>
               <MiniMonthGrid
                 testID={`year-month-grid-${month.getMonth()}`}
+                month={month}
                 weeks={weeks}
                 sweepEnabled={sweepEnabled && !isWeb}
                 isSelectable={isSelectable}
@@ -446,6 +461,7 @@ function YearViewInner<T>({
 // month it started in.
 function MiniMonthGrid({
   testID,
+  month,
   weeks,
   sweepEnabled,
   isSelectable,
@@ -455,6 +471,7 @@ function MiniMonthGrid({
   children,
 }: {
   testID: string;
+  month: Date;
   weeks: Date[][];
   sweepEnabled: boolean;
   isSelectable: (day: Date) => boolean;
@@ -468,17 +485,26 @@ function MiniMonthGrid({
     const { width, height } = event.nativeEvent.layout;
     sizeRef.current = { width, height };
   }, []);
-  const dayAt = useCallback(
-    (x: number, y: number): Date | null => {
-      const { width, height } = sizeRef.current;
-      if (width <= 0 || height <= 0 || weeks.length === 0) return null;
-      const row = Math.min(weeks.length - 1, Math.max(0, Math.floor(y / (height / weeks.length))));
-      const cols = weeks[row].length;
-      const col = Math.min(cols - 1, Math.max(0, Math.floor(x / (width / cols))));
-      return weeks[row][col] ?? null;
-    },
-    [weeks],
-  );
+  // The gesture reads its inputs from here rather than closing over them, so a
+  // consumer's inline handler (or the re-render each swept day causes) can't
+  // rebuild the pan and cancel the drag that is running through it.
+  const latest = useRef({ month, weeks, isSelectable, onBeginSweep, onExtendSweep, onFinishSweep });
+  latest.current = { month, weeks, isSelectable, onBeginSweep, onExtendSweep, onFinishSweep };
+  // The day under a grid-relative point, or null for a point on a blanked
+  // adjacent-month cell or an unselectable day: neither can anchor a sweep or
+  // be swept onto. Mirrors MonthView's `hitTest`.
+  const dayAt = useCallback((x: number, y: number): Date | null => {
+    const { width, height } = sizeRef.current;
+    const { month: current, weeks: rows, isSelectable: selectable } = latest.current;
+    if (width <= 0 || height <= 0 || rows.length === 0) return null;
+    const row = Math.min(rows.length - 1, Math.max(0, Math.floor(y / (height / rows.length))));
+    const cols = rows[row].length;
+    const col = Math.min(cols - 1, Math.max(0, Math.floor(x / (width / cols))));
+    const day = rows[row][col];
+    if (!day) return null;
+    if (day.getMonth() !== current.getMonth()) return null;
+    return selectable(day) ? day : null;
+  }, []);
   const gesture = useMemo<PanGesture | undefined>(() => {
     if (!sweepEnabled) return undefined;
     return Gesture.Pan()
@@ -486,14 +512,14 @@ function MiniMonthGrid({
       .runOnJS(true)
       .onStart((event) => {
         const day = dayAt(event.x, event.y);
-        if (day && isSelectable(day)) onBeginSweep(day);
+        if (day) latest.current.onBeginSweep(day);
       })
       .onUpdate((event) => {
         const day = dayAt(event.x, event.y);
-        if (day) onExtendSweep(day);
+        if (day) latest.current.onExtendSweep(day);
       })
-      .onFinalize(onFinishSweep);
-  }, [sweepEnabled, dayAt, isSelectable, onBeginSweep, onExtendSweep, onFinishSweep]);
+      .onFinalize(() => latest.current.onFinishSweep());
+  }, [sweepEnabled, dayAt]);
   const grid = (
     <View testID={testID} onLayout={onLayout}>
       {children}
