@@ -296,7 +296,8 @@ Pass `onDragEvent` to make events draggable on the week/day grid. Move an event
 (**long-press** it on native, **click-drag** it on web) — drag **vertically to
 change the time, horizontally to move it to another day** (within the visible
 range) — or **drag the grip at its top or bottom edge** to change the start or the
-end. The handler receives
+end. Dragging past the end of the day lets an event's end run into the next one,
+previewed at the top of the next column. The handler receives
 the new `start`/`end`, snapped to `dragStepMinutes` (default 15) — update your own
 event state in response. On web a plain click still selects and right-click still
 fires, so drag coexists with both:
