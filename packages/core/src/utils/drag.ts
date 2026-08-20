@@ -1,3 +1,4 @@
+import { addDays, startOfDay } from "date-fns";
 import type { CalendarEvent, CalendarMode, WeekStartsOn } from "../types";
 import { getViewDays } from "./dates";
 
@@ -121,4 +122,27 @@ export function cellRangeFromDrag(
   end.setHours(0, 0, 0, 0);
   end.setMinutes(upper);
   return { start, end };
+}
+
+/**
+ * The all-day range swept out between two day cells of a month or year grid.
+ * Ordered (sweeping backwards works) and half-open: `start` is midnight of the
+ * first day and `end` is midnight after the last, so a one-day sweep spans a
+ * whole day. Pure, so the commit path is unit-testable without a running gesture.
+ */
+export function dayRangeFromDrag(anchor: Date, hover: Date): { start: Date; end: Date } {
+  const a = startOfDay(anchor);
+  const b = startOfDay(hover);
+  const [lower, upper] = a.getTime() <= b.getTime() ? [a, b] : [b, a];
+  return { start: lower, end: addDays(upper, 1) };
+}
+
+/**
+ * An event's bounds after moving it `days` whole calendar days (negative moves it
+ * earlier), keeping its wall-clock time and its duration across a DST boundary.
+ * Used by the month grid's drag-to-move, where a drop changes the day a chip sits
+ * on but not its time of day.
+ */
+export function shiftEventDays(start: Date, end: Date, days: number): { start: Date; end: Date } {
+  return { start: addDays(start, days), end: addDays(end, days) };
 }
