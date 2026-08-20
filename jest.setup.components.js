@@ -7,15 +7,31 @@
 // builder, so `Gesture.Pan().enabled(x).onStart(fn)` works without natives).
 jest.mock("react-native-gesture-handler", () => {
   const { View } = require("react-native");
-  const makeChain = () => {
-    const chain = new Proxy(() => chain, { get: () => () => chain });
+  // Every gesture built during a test lands here, with the callbacks it was
+  // configured with, so a test can drive a pan without a native gesture stream:
+  // `__gestures.at(-1).handlers.onStart({ x, y })`.
+  const gestures = [];
+  const makeChain = (kind) => {
+    const handlers = {};
+    const chain = new Proxy(() => chain, {
+      get:
+        (_target, prop) =>
+        (...args) => {
+          if (typeof prop === "string" && prop.startsWith("on") && typeof args[0] === "function") {
+            handlers[prop] = args[0];
+          }
+          return chain;
+        },
+    });
+    gestures.push({ kind, handlers });
     return chain;
   };
   return {
     __esModule: true,
     GestureDetector: ({ children }) => children,
     GestureHandlerRootView: View,
-    Gesture: new Proxy({}, { get: () => () => makeChain() }),
+    Gesture: new Proxy({}, { get: (_target, kind) => () => makeChain(kind) }),
+    __gestures: gestures,
   };
 });
 
