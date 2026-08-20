@@ -1,4 +1,4 @@
-import { fireEvent, render, within } from "@testing-library/react-native";
+import { act, fireEvent, render, within } from "@testing-library/react-native";
 import { StyleSheet, Text, type ViewStyle } from "react-native";
 import { CalendarThemeProvider, defaultTheme, mergeTheme } from "../../theme";
 import type { CalendarEvent } from "../../types";
@@ -16,6 +16,19 @@ const baseProps = {
 
 const backgroundColorOf = (node: { props: { style?: unknown } }) =>
   StyleSheet.flatten(node.props.style as ViewStyle)?.backgroundColor;
+
+// The absolutely-positioned wrapper a month event bar is drawn in, found from a
+// node inside the chip. The chip's own box sets an opacity of its own, so the
+// wrapper is identified by its positioning, not by carrying an opacity.
+const barWrapperOf = (node: { parent: unknown; props: { style?: unknown } }) => {
+  let current: typeof node | null = node;
+  while (current) {
+    const style = StyleSheet.flatten(current.props.style as ViewStyle);
+    if (style?.position === "absolute") return style;
+    current = current.parent as typeof node | null;
+  }
+  throw new Error("no absolutely-positioned bar wrapper above this node");
+};
 
 describe("MonthView selection", () => {
   it("announces a single selected day", () => {
@@ -292,5 +305,285 @@ describe("MonthView multi-day events", () => {
     const { getAllByText } = render(<MonthView {...baseProps} events={span} />);
     // One bar spanning two days, not a chip repeated on each day.
     expect(getAllByText("Trip")).toHaveLength(1);
+  });
+});
+
+describe("MonthView onPressCell", () => {
+  it("fires with the tapped day at midnight, alongside onPressDay", () => {
+    const onPressCell = jest.fn();
+    const onPressDay = jest.fn();
+    const { getByLabelText } = render(
+      <MonthView {...baseProps} onPressCell={onPressCell} onPressDay={onPressDay} />,
+    );
+    fireEvent.press(getByLabelText(/15 June 2026/));
+    expect(onPressCell).toHaveBeenCalledWith(new Date(2026, 5, 15));
+    expect(onPressDay).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires on its own when only onPressCell is wired", () => {
+    const onPressCell = jest.fn();
+    const { getByLabelText } = render(<MonthView {...baseProps} onPressCell={onPressCell} />);
+    fireEvent.press(getByLabelText(/15 June 2026/));
+    expect(onPressCell).toHaveBeenCalledWith(new Date(2026, 5, 15));
+  });
+
+  it("ignores a tap on a disabled day", () => {
+    const onPressCell = jest.fn();
+    const { getByLabelText } = render(
+      <MonthView
+        {...baseProps}
+        isDateDisabled={(day) => day.getDate() === 15}
+        onPressCell={onPressCell}
+      />,
+    );
+    fireEvent.press(getByLabelText(/15 June 2026/));
+    expect(onPressCell).not.toHaveBeenCalled();
+  });
+});
+
+describe("MonthView drag", () => {
+  // June 2026 with weekStartsOn=0 renders five week rows starting Sun 31 May, so
+  // at 700x600 each cell is 100 wide and 120 tall. Row 2 is Sun 14 - Sat 20 June.
+  const GRID = { width: 700, height: 600 };
+  const ROW_HEIGHT = GRID.height / 5;
+  const COL_WIDTH = GRID.width / 7;
+  // Vertically: inside the date badge is empty cell; just past it is the first
+  // event lane, where a bar can be grabbed.
+  const EMPTY_Y = 8;
+  const LANE_Y = 32;
+  // Column centre for a weekday, 0 = Sunday.
+  const colX = (weekday: number) => weekday * COL_WIDTH + COL_WIDTH / 2;
+  const rowY = (row: number, offset: number) => row * ROW_HEIGHT + offset;
+
+  const standup: CalendarEvent = {
+    title: "Standup",
+    start: new Date(2026, 5, 15, 9, 30), // Mon 15 June
+    end: new Date(2026, 5, 15, 10, 15),
+  };
+
+  // The pan the MonthView built for this render (the mock records every builder).
+  const lastGesture = () => {
+    const { __gestures } = require("react-native-gesture-handler");
+    return __gestures[__gestures.length - 1];
+  };
+
+  const mount = (ui: React.ReactElement) => {
+    const view = render(ui);
+    // react-test-renderer never lays out, so feed the grid its box by hand.
+    fireEvent(view.getByTestId("month-grid"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, ...GRID } },
+    });
+    return view;
+  };
+
+  // The gesture callbacks are invoked straight from the recording mock, outside
+  // React's event system, so the preview state they set needs its own act().
+  const drag = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const { handlers } = lastGesture();
+    act(() => {
+      handlers.onStart(from);
+      handlers.onUpdate(to);
+      handlers.onEnd({}, true);
+    });
+  };
+  // Grab and move without releasing, so the in-flight preview can be inspected.
+  const dragTo = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const { handlers } = lastGesture();
+    act(() => {
+      handlers.onStart(from);
+      handlers.onUpdate(to);
+    });
+  };
+
+  it("mounts no gesture when neither drag handler is wired", () => {
+    const { __gestures } = require("react-native-gesture-handler");
+    const before = __gestures.length;
+    mount(<MonthView {...baseProps} events={[standup]} />);
+    expect(__gestures.length).toBe(before);
+  });
+
+  describe("to create", () => {
+    it("fires onCreateEvent with the all-day span swept across empty cells", () => {
+      const onCreateEvent = jest.fn();
+      mount(<MonthView {...baseProps} events={[standup]} onCreateEvent={onCreateEvent} />);
+      // Tue 16 June -> Thu 18 June, along the empty top of each cell.
+      drag({ x: colX(2), y: rowY(2, EMPTY_Y) }, { x: colX(4), y: rowY(2, EMPTY_Y) });
+
+      expect(onCreateEvent).toHaveBeenCalledTimes(1);
+      const [start, end] = onCreateEvent.mock.calls[0] as [Date, Date];
+      expect(start).toEqual(new Date(2026, 5, 16));
+      // End is exclusive: midnight after the last swept day.
+      expect(end).toEqual(new Date(2026, 5, 19));
+    });
+
+    it("commits a stationary hold as a single all-day event", () => {
+      const onCreateEvent = jest.fn();
+      mount(<MonthView {...baseProps} events={[standup]} onCreateEvent={onCreateEvent} />);
+      const point = { x: colX(2), y: rowY(2, EMPTY_Y) };
+      drag(point, point);
+
+      const [start, end] = onCreateEvent.mock.calls[0] as [Date, Date];
+      expect(start).toEqual(new Date(2026, 5, 16));
+      expect(end).toEqual(new Date(2026, 5, 17));
+    });
+
+    it("sweeps backwards to the same ordered span", () => {
+      const onCreateEvent = jest.fn();
+      mount(<MonthView {...baseProps} events={[standup]} onCreateEvent={onCreateEvent} />);
+      drag({ x: colX(4), y: rowY(2, EMPTY_Y) }, { x: colX(2), y: rowY(2, EMPTY_Y) });
+
+      const [start, end] = onCreateEvent.mock.calls[0] as [Date, Date];
+      expect(start).toEqual(new Date(2026, 5, 16));
+      expect(end).toEqual(new Date(2026, 5, 19));
+    });
+
+    it("tints every day of the span while the sweep is in flight", () => {
+      const view = mount(<MonthView {...baseProps} events={[standup]} onCreateEvent={() => {}} />);
+      dragTo({ x: colX(2), y: rowY(2, EMPTY_Y) }, { x: colX(4), y: rowY(2, EMPTY_Y) });
+
+      for (const day of [/16 June 2026/, /17 June 2026/, /18 June 2026/]) {
+        expect(backgroundColorOf(view.getByLabelText(day))).toBe(
+          defaultTheme.colors.rangeBackground,
+        );
+      }
+      // The day just outside the sweep keeps its own background.
+      expect(backgroundColorOf(view.getByLabelText(/19 June 2026/))).toBeUndefined();
+    });
+
+    it("does not start on a disabled day", () => {
+      const onCreateEvent = jest.fn();
+      mount(
+        <MonthView
+          {...baseProps}
+          events={[standup]}
+          isDateDisabled={(day) => day.getDate() === 16}
+          onCreateEvent={onCreateEvent}
+        />,
+      );
+      drag({ x: colX(2), y: rowY(2, EMPTY_Y) }, { x: colX(4), y: rowY(2, EMPTY_Y) });
+      expect(onCreateEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("to reschedule", () => {
+    it("fires onDragEvent with both ends shifted by the days dragged", () => {
+      const onDragEvent = jest.fn();
+      const onDragStart = jest.fn();
+      mount(
+        <MonthView
+          {...baseProps}
+          events={[standup]}
+          onDragEvent={onDragEvent}
+          onDragStart={onDragStart}
+        />,
+      );
+      // Grab the bar on Mon 15 June and drop it on Thu 18 June.
+      drag({ x: colX(1), y: rowY(2, LANE_Y) }, { x: colX(4), y: rowY(2, LANE_Y) });
+
+      expect(onDragStart).toHaveBeenCalledWith(standup);
+      expect(onDragEvent).toHaveBeenCalledTimes(1);
+      const [event, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+      expect(event).toBe(standup);
+      // The time of day and the 45-minute duration survive the move.
+      expect(start).toEqual(new Date(2026, 5, 18, 9, 30));
+      expect(end).toEqual(new Date(2026, 5, 18, 10, 15));
+    });
+
+    it("carries an event into another week row", () => {
+      const onDragEvent = jest.fn();
+      mount(<MonthView {...baseProps} events={[standup]} onDragEvent={onDragEvent} />);
+      // Row 3 is Sun 21 - Sat 27 June; the same weekday there is Mon 22 June.
+      drag({ x: colX(1), y: rowY(2, LANE_Y) }, { x: colX(1), y: rowY(3, LANE_Y) });
+
+      const [, start] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+      expect(start).toEqual(new Date(2026, 5, 22, 9, 30));
+    });
+
+    it("commits nothing when the drop lands back on the day it started", () => {
+      const onDragEvent = jest.fn();
+      mount(<MonthView {...baseProps} events={[standup]} onDragEvent={onDragEvent} />);
+      const point = { x: colX(1), y: rowY(2, LANE_Y) };
+      drag(point, point);
+      expect(onDragEvent).not.toHaveBeenCalled();
+    });
+
+    it("does not pick up an event locked with draggable: false", () => {
+      const onDragEvent = jest.fn();
+      mount(
+        <MonthView
+          {...baseProps}
+          events={[{ ...standup, draggable: false }]}
+          onDragEvent={onDragEvent}
+        />,
+      );
+      drag({ x: colX(1), y: rowY(2, LANE_Y) }, { x: colX(4), y: rowY(2, LANE_Y) });
+      expect(onDragEvent).not.toHaveBeenCalled();
+    });
+
+    it("honours eventStartEditable={false} as the grid-wide lock", () => {
+      const onDragEvent = jest.fn();
+      mount(
+        <MonthView
+          {...baseProps}
+          events={[standup]}
+          eventStartEditable={false}
+          onDragEvent={onDragEvent}
+        />,
+      );
+      drag({ x: colX(1), y: rowY(2, LANE_Y) }, { x: colX(4), y: rowY(2, LANE_Y) });
+      expect(onDragEvent).not.toHaveBeenCalled();
+    });
+
+    it("rejects a drop onto an overlapping event when eventOverlap is false", () => {
+      const onDragEvent = jest.fn();
+      const clash: CalendarEvent = {
+        title: "Clash",
+        start: new Date(2026, 5, 18, 9, 30),
+        end: new Date(2026, 5, 18, 10, 15),
+      };
+      mount(
+        <MonthView
+          {...baseProps}
+          events={[standup, clash]}
+          eventOverlap={false}
+          onDragEvent={onDragEvent}
+        />,
+      );
+      drag({ x: colX(1), y: rowY(2, LANE_Y) }, { x: colX(4), y: rowY(2, LANE_Y) });
+      expect(onDragEvent).not.toHaveBeenCalled();
+    });
+
+    it("fades the carried bar and tints only the day it would land on", () => {
+      const view = mount(<MonthView {...baseProps} events={[standup]} onDragEvent={() => {}} />);
+      dragTo({ x: colX(1), y: rowY(2, LANE_Y) }, { x: colX(4), y: rowY(2, LANE_Y) });
+
+      expect(backgroundColorOf(view.getByLabelText(/18 June 2026/))).toBe(
+        defaultTheme.colors.rangeBackground,
+      );
+      // Not the day it came from, and not an untouched day in between.
+      expect(backgroundColorOf(view.getByLabelText(/15 June 2026/))).toBeUndefined();
+      expect(backgroundColorOf(view.getByLabelText(/17 June 2026/))).toBeUndefined();
+      const bar = barWrapperOf(view.getByText("Standup"));
+      expect(bar.opacity).toBeLessThan(1);
+      // Non-interactive mid-drag, so the sweep reaches the cells underneath.
+      expect(bar.pointerEvents).toBe("none");
+    });
+
+    it("sweeps a new span instead when the grab misses every bar", () => {
+      const onCreateEvent = jest.fn();
+      const onDragEvent = jest.fn();
+      mount(
+        <MonthView
+          {...baseProps}
+          events={[standup]}
+          onCreateEvent={onCreateEvent}
+          onDragEvent={onDragEvent}
+        />,
+      );
+      // Same lane row, but a column the bar does not cover.
+      drag({ x: colX(3), y: rowY(2, LANE_Y) }, { x: colX(5), y: rowY(2, LANE_Y) });
+      expect(onDragEvent).not.toHaveBeenCalled();
+      expect(onCreateEvent).toHaveBeenCalledTimes(1);
+    });
   });
 });
