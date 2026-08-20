@@ -27,6 +27,92 @@ describe("dom YearView", () => {
     expect(onPressDay.mock.calls[0][0].getMonth()).toBe(6);
   });
 
+  it("marks selected days and the days inside a range", () => {
+    const { getByLabelText } = render(
+      <YearView
+        date={new Date(2026, 6, 20)}
+        selectedRange={{ start: new Date(2026, 6, 15), end: new Date(2026, 6, 17) }}
+      />,
+    );
+    // Endpoints read as selected; the day between only carries the range band.
+    expect(getByLabelText(/15 July 2026, selected/).getAttribute("data-selected")).toBe("");
+    expect(getByLabelText(/16 July 2026/).getAttribute("data-range")).toBe("");
+    expect(getByLabelText(/16 July 2026/).hasAttribute("data-selected")).toBe(false);
+  });
+
+  it("disables days outside minDate/maxDate", () => {
+    const onPressDay = jest.fn();
+    const { getByLabelText } = render(
+      <YearView
+        date={new Date(2026, 6, 20)}
+        minDate={new Date(2026, 6, 10)}
+        onPressDay={onPressDay}
+      />,
+    );
+    const day = getByLabelText(/9 July 2026, unavailable/);
+    expect(day.hasAttribute("data-disabled")).toBe(true);
+    fireEvent.click(day);
+    expect(onPressDay).not.toHaveBeenCalled();
+  });
+
+  describe("drag to select and create", () => {
+    const day = (c: HTMLElement, label: string) =>
+      c.querySelector(`[aria-label^="${label}"]`) as HTMLElement;
+
+    it("reports the sweep live and commits an all-day range on release", () => {
+      const onSelectDrag = jest.fn();
+      const onCreateEvent = jest.fn();
+      const { container } = render(
+        <YearView
+          date={new Date(2026, 6, 20)}
+          onSelectDrag={onSelectDrag}
+          onCreateEvent={onCreateEvent}
+        />,
+      );
+      fireEvent.pointerDown(day(container, "Wednesday, 15 July 2026"), { button: 0 });
+      fireEvent.pointerEnter(day(container, "Friday, 17 July 2026"));
+      expect(onSelectDrag).toHaveBeenCalledWith(new Date(2026, 6, 15), new Date(2026, 6, 17));
+      // Swept days are flagged for styling.
+      expect(day(container, "Thursday, 16 July 2026").hasAttribute("data-creating")).toBe(true);
+      fireEvent.pointerUp(window);
+
+      expect(onCreateEvent).toHaveBeenCalledTimes(1);
+      const [start, end] = onCreateEvent.mock.calls[0] as [Date, Date];
+      expect(start).toEqual(new Date(2026, 6, 15));
+      // End is exclusive: midnight after the last swept day.
+      expect(end).toEqual(new Date(2026, 6, 18));
+    });
+
+    it("sweeps on across mini months", () => {
+      const onSelectDrag = jest.fn();
+      const { container } = render(
+        <YearView date={new Date(2026, 6, 20)} onSelectDrag={onSelectDrag} />,
+      );
+      fireEvent.pointerDown(day(container, "Friday, 31 July 2026"), { button: 0 });
+      fireEvent.pointerEnter(day(container, "Monday, 3 August 2026"));
+      expect(onSelectDrag).toHaveBeenCalledWith(new Date(2026, 6, 31), new Date(2026, 7, 3));
+      fireEvent.pointerUp(window);
+    });
+
+    it("leaves a plain click to onPressDay", () => {
+      const onCreateEvent = jest.fn();
+      const onPressDay = jest.fn();
+      const { container } = render(
+        <YearView
+          date={new Date(2026, 6, 20)}
+          onCreateEvent={onCreateEvent}
+          onPressDay={onPressDay}
+        />,
+      );
+      const cell = day(container, "Wednesday, 15 July 2026");
+      fireEvent.pointerDown(cell, { button: 0 });
+      fireEvent.pointerUp(window);
+      fireEvent.click(cell);
+      expect(onCreateEvent).not.toHaveBeenCalled();
+      expect(onPressDay).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("renders through Calendar mode=year and pages by year with PageDown", () => {
     const onChangeDate = jest.fn();
     const { getByRole, container } = render(
