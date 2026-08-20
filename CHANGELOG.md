@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.2](https://github.com/afonsojramos/super-calendar/compare/v2.8.1...v2.8.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **native:** type each slot for the element it styles ([#43](https://github.com/afonsojramos/super-calendar/issues/43)) ([efa22bf](https://github.com/afonsojramos/super-calendar/commit/efa22bf3aa4badd191c5647d8cd1a0e03386902c))
+
 ## [2.8.1](https://github.com/afonsojramos/super-calendar/compare/v2.8.0...v2.8.1) (2026-07-30)
 
 
