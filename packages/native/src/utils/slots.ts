@@ -15,7 +15,17 @@
 // prop React Native silently ignores, so the props are safe to pass everywhere.
 
 import { createContext, createElement, type ReactNode, useContext, useMemo } from "react";
-import type { StyleProp, TextStyle } from "react-native";
+import type { ImageStyle, StyleProp, TextStyle, ViewStyle } from "react-native";
+
+/**
+ * The style shapes a slot can resolve to. A slot carries the style type of the
+ * element it is spread on, because React Native's style types stop being
+ * mutually assignable as soon as a consumer's types diverge them: Expo's
+ * react-native-web types widen `cursor` on `TextStyle` and `userSelect` on
+ * `ViewStyle`, so a `View` slot typed as `TextStyle` fails to compile in any
+ * Expo app.
+ */
+export type SlotStyle = ViewStyle | TextStyle | ImageStyle;
 
 /**
  * Per-slot styling overrides. Give a slot a Tailwind class (uniwind/NativeWind)
@@ -30,20 +40,20 @@ export interface SlotStyleProps<Slot extends string> {
    */
   classNames?: Partial<Record<Slot, string>>;
   /** Style overrides per slot, merged last (win over defaults and classes). */
-  styles?: Partial<Record<Slot, StyleProp<TextStyle>>>;
+  styles?: Partial<Record<Slot, StyleProp<SlotStyle>>>;
 }
 
 /** A slot's built-in styling, split so classes can replace the look but not the layout. */
-export interface SlotDefault {
+export interface SlotDefault<Style extends SlotStyle = ViewStyle> {
   /** Structural styles kept even when a class is supplied. */
-  base?: StyleProp<TextStyle>;
+  base?: StyleProp<Style>;
   /** Themed styles (colour, type, spacing) dropped when a class is supplied. */
-  themed?: StyleProp<TextStyle>;
+  themed?: StyleProp<Style>;
 }
 
 /** The props a resolved slot spreads onto an element. */
-export interface ResolvedSlot {
-  style: StyleProp<TextStyle>;
+export interface ResolvedSlot<Style extends SlotStyle = ViewStyle> {
+  style: StyleProp<Style>;
   className?: string;
 }
 
@@ -53,10 +63,24 @@ export interface ResolvedSlot {
  * consumer supplied one, a `className` for the Tailwind runtime to pick up.
  */
 export function createSlots<Slot extends string>({ classNames, styles }: SlotStyleProps<Slot>) {
-  return (name: Slot, defaults?: SlotDefault): ResolvedSlot => {
+  // `NoInfer` keeps the element type a decision, not a guess: without it the
+  // literal type of a `StyleSheet.create` entry wins the inference and every
+  // themed style passed alongside it is then measured against that one entry.
+  // Slots default to a `View`; `slot<TextStyle>(...)` marks the text ones.
+  return <Style extends SlotStyle = ViewStyle>(
+    name: Slot,
+    defaults?: SlotDefault<NoInfer<Style>>,
+  ): ResolvedSlot<Style> => {
     const slotClass = classNames?.[name];
     return {
-      style: [defaults?.base, slotClass ? undefined : defaults?.themed, styles?.[name]],
+      style: [
+        defaults?.base,
+        slotClass ? undefined : defaults?.themed,
+        // A consumer's override is declared for any element's style, so it is
+        // narrowed to this slot's element here. React Native flattens the array
+        // and drops properties the element does not support either way.
+        styles?.[name] as StyleProp<Style>,
+      ],
       ...(slotClass ? { className: slotClass } : null),
     };
   };

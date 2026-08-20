@@ -11,6 +11,7 @@ import {
   StyleSheet,
   type StyleProp,
   Text,
+  type TextStyle,
   useWindowDimensions,
   View,
   type ViewStyle,
@@ -304,7 +305,7 @@ function MonthPagerInner<T>({
       {/* The active month's title, above the (shared) weekday header — mirrors the
           dom MonthView's title. The grids below omit their own title/weekdays. */}
       <Text
-        {...slot("title", {
+        {...slot<TextStyle>("title", {
           base: styles.monthTitle,
           themed: [theme.text.monthTitle, { color: theme.colors.text }],
         })}
@@ -411,7 +412,7 @@ const MonthWeekdayHeader = ({
       {weekDays.map((day) => (
         <Text
           key={day.toISOString()}
-          {...slot("weekday", {
+          {...slot<TextStyle>("weekday", {
             base: styles.weekdayLabel,
             themed: [theme.text.weekday, { color: theme.colors.textMuted }],
           })}

@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  type TextStyle,
   View,
 } from "react-native";
 import { useCalendarTheme } from "../theme";
@@ -117,7 +118,7 @@ function YearViewInner<T>({
           const monthLabel = format(month, "MMMM yyyy", { locale });
           const titleText = (
             <Text
-              {...slot("monthTitle", {
+              {...slot<TextStyle>("monthTitle", {
                 base: styles.monthTitle,
                 themed: [styles.monthTitleText, { color: theme.colors.todayBackground }],
               })}
@@ -155,7 +156,7 @@ function YearViewInner<T>({
                 {weekdayLabels.map((label, i) => (
                   <Text
                     key={i}
-                    {...slot("weekday", {
+                    {...slot<TextStyle>("weekday", {
                       base: styles.weekday,
                       themed: [styles.weekdayText, { color: theme.colors.textMuted }],
                     })}
@@ -192,7 +193,7 @@ function YearViewInner<T>({
                     const content = (
                       <>
                         <Text
-                          {...slot("dayText", {
+                          {...slot<TextStyle>("dayText", {
                             themed: [
                               styles.dayText,
                               {
