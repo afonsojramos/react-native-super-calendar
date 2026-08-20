@@ -29,6 +29,14 @@ describe("dom Calendar", () => {
     expect(queryByText("09:00 - 11:00")).toBeNull(); // no time-grid label in month mode
   });
 
+  it("hides the month title with showTitle={false}, so an app header can own the label", () => {
+    const { queryByText, getByText } = render(
+      <Calendar mode="month" date={date} events={events} weekStartsOn={1} showTitle={false} />,
+    );
+    expect(queryByText("July 2026")).toBeNull();
+    expect(getByText("Standup")).toBeTruthy(); // the grid itself still renders
+  });
+
   it("renders a time grid in week mode", () => {
     const { getByText } = render(
       <Calendar mode="week" date={date} events={events} weekStartsOn={1} hourHeight={48} />,

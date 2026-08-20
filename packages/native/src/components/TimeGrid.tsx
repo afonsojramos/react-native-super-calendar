@@ -58,6 +58,8 @@ import type {
   BusinessHoursBand,
   CalendarEvent,
   CalendarMode,
+  EventDragHandler,
+  EventDragStartHandler,
   EventKeyExtractor,
   RenderEvent,
   TimeGridMode,
@@ -219,23 +221,10 @@ function DragGhost<T>({
   );
 }
 
-/**
- * Called when an event is dragged (moved or resized) to new start/end times.
- * Return `false` to reject the drop — the event snaps back to where it started
- * (e.g. to forbid overlaps or out-of-bounds slots). Any other return accepts it.
- */
-export type EventDragHandler<T> = (
-  event: CalendarEvent<T>,
-  start: Date,
-  end: Date,
-) => void | boolean;
-/**
- * Called when a move or resize gesture begins, before any change is committed:
- * on grab for a move (after the long-press), and when the resize drag starts.
- * Handy for haptic feedback (e.g. `expo-haptics`). Requires drag to be enabled
- * via `onDragEvent`.
- */
-export type EventDragStartHandler<T> = (event: CalendarEvent<T>) => void;
+// The drag handler types live in `../types` so the Reanimated-free month view can
+// share them; re-exported here because both are part of this module's public API.
+export type { EventDragHandler, EventDragStartHandler } from "../types";
+
 // Hour labels are nudged up so the number sits centred on its grid line. Pad the
 // scroll content by the same amount so the top-most label is never clipped.
 const HOUR_LABEL_TOP_INSET = 12;

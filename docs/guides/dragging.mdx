@@ -4,8 +4,10 @@ sidebarTitle: Drag & create
 description: Move, resize, reschedule across days, and create events by dragging.
 ---
 
-All of this lives on the week/day grid and is opt-in: pass the relevant handler
-and update your own event state in response.
+Everything here is opt-in: pass the relevant handler and update your own event
+state in response. Move, resize, and create work on the week/day grid; move and
+create also work on the month grid (see [On the month grid](#on-the-month-grid)),
+where a drag moves an event by whole days rather than by time.
 
 ## Move and resize
 
@@ -174,13 +176,18 @@ in-progress sweep before it commits.
   "drag to create a range."
 </Note>
 
-### On the month grid
+## On the month grid
 
-`onCreateEvent` also works in `month` mode (web): press a day and drag across others
-to sketch an **all-day** span, then release. `start` is midnight of the first day and
-`end` is midnight after the last (exclusive). A plain click still fires `onPressDay`,
-and each day in the sweep carries `data-creating` for styling (see
-[Styling](/guides/styling)).
+The same two handlers work in `month` mode on both renderers. Nothing extra to
+enable: pass `onCreateEvent`, `onDragEvent`, or both.
+
+### Drag to create a day span
+
+Press an empty day and drag across others to sketch an **all-day** span, then
+release. `start` is midnight of the first day and `end` is midnight after the last
+(exclusive). On native you **long-press** first, so a tap and a page swipe are
+never hijacked, and a stationary hold creates that single day; on web a plain
+click without dragging creates nothing and still fires `onPressDay`.
 
 ```tsx
 <Calendar
@@ -191,6 +198,39 @@ and each day in the sweep carries `data-creating` for styling (see
   }
 />
 ```
+
+### Drag to reschedule
+
+Pick an event bar up and drop it on another day. Both ends shift by the same
+number of calendar days, so the **time of day and the duration are preserved**
+(a multi-day event keeps its length). Grab it with a **long-press** on native and
+a **press-drag** on web. The carried bar fades and the target day is tinted while
+you drag.
+
+```tsx
+<Calendar
+  mode="month"
+  /* ... */
+  onDragEvent={(event, start, end) =>
+    setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, start, end } : e)))
+  }
+/>
+```
+
+Everything above applies here too: `draggable: false` and `startEditable: false`
+lock an event, `eventStartEditable={false}` locks the whole grid, returning
+`false` rejects a drop, and `eventOverlap={false}` rejects one that would land on
+top of another event. `onDragStart` fires on grab, for haptics. There is no resize
+on the month grid, so `durationEditable` has no effect there.
+
+### Styling the drag states
+
+Both states are tinted with the theme's `rangeBackground` token by default (see
+[Theming](/guides/theming)), and the bar being carried fades. On the dom renderer
+each day in a create sweep also carries `data-creating` and the day an event is
+about to land on carries `data-drop`, so you can restyle either (see
+[Styling](/guides/styling)); give the `day` slot a class to take the tint over
+entirely.
 
 ## Tuning the snap
 

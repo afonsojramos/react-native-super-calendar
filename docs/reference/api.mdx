@@ -52,16 +52,16 @@ your editor lists the full set with inline docs.
 
 | Prop                    | Type                                     | Notes                                                                             |
 | ----------------------- | ---------------------------------------- | --------------------------------------------------------------------------------- |
-| `onDragEvent`           | `(event, start, end) => void \| boolean` | Enable move/resize; return `false` to reject.                                     |
+| `onDragEvent`           | `(event, start, end) => void \| boolean` | Enable move/resize; return `false` to reject. Month: drop on another day.         |
 | `onDragStart`           | `(event) => void`                        | Fires on grab (e.g. haptics).                                                     |
-| `onCreateEvent`         | `(start, end) => void`                   | Drag empty space to create.                                                       |
+| `onCreateEvent`         | `(start, end) => void`                   | Drag empty space to create. Month: an all-day span.                               |
 | `dragStepMinutes`       | `number`                                 | Snap step (default 15).                                                           |
 | `showDragHandle`        | `boolean`                                | Show the resize grip (default true).                                              |
 | `eventStartEditable`    | `boolean`                                | Grid-wide: allow moving events (default true). Per-event `startEditable`.         |
 | `eventDurationEditable` | `boolean`                                | Grid-wide: allow resizing events (default true). Per-event `durationEditable`.    |
 | `eventOverlap`          | `boolean`                                | When false, reject a drag/resize that would overlap another event (default true). |
 | `onPressEvent`          | `(event) => void`                        | Tap an event.                                                                     |
-| `onPressCell`           | `(date) => void`                         | Tap empty grid space.                                                             |
+| `onPressCell`           | `(date) => void`                         | Tap empty grid space. Month: the tapped day at midnight.                          |
 | `onPressDay`            | `(date) => void`                         | Tap a month day cell.                                                             |
 | `onPressMore`           | `(events, date) => void`                 | Tap the `+N more` overflow.                                                       |
 
@@ -85,6 +85,7 @@ and `minDate` / `maxDate` / `isDateDisabled` for disabled days. See the
 | `allDayLabel`          | `string`                                   | Schedule all-day text ("All day").                                              |
 | `highlightWeekends`    | `boolean`                                  | Tint weekend cells/columns (month + time grid, default on).                     |
 | `maxVisibleEventCount` | `number`                                   | Month: fixed cap on event lanes per week row.                                   |
+| `showTitle`            | `boolean`                                  | Month: the built-in "MMMM yyyy" label above the grid (default on).              |
 | `theme`                | `PartialCalendarTheme`                     | Color/text/metric overrides.                                                    |
 | `classNames`           | `Partial<Record<CalendarSlot, string>>`    | Per-slot Tailwind classes (uniwind/NativeWind); see [Styling](/guides/styling). |
 | `styles`               | `Partial<Record<CalendarSlot, StyleProp>>` | Per-slot style overrides, merged last.                                          |

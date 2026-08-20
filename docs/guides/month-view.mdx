@@ -51,6 +51,9 @@ the rest of a day's events into a `+N more` label.
 
 ## Grid shape
 
+- `showTitle` — the built-in "July 2026" label above the grid (default on). Set
+  `showTitle={false}` when your own header already shows the month and year, so
+  the label isn't duplicated.
 - `showSixWeeks` — always render six week rows for a fixed-height grid.
 - `showAdjacentMonths` — show (dimmed) days from the neighbouring months
   (default on).
@@ -67,10 +70,32 @@ the rest of a day's events into a `+N more` label.
 ## Taps and custom cells
 
 `onPressDay` / `onLongPressDay` fire for the cell, `onPressEvent` /
-`onLongPressEvent` for a chip. Replace parts of the cell with
-`renderCustomDateForMonth` (the date badge) or a custom `renderEvent`
-(see [Custom events](/guides/events)); restyle everything else through the
-[theme](/guides/theming) or per-slot [classes](/guides/styling).
+`onLongPressEvent` for a chip. `onPressCell` fires for the cell too, with the day
+at midnight, so the handler you already use to create events on the week/day grid
+works unchanged in month mode:
+
+```tsx
+<Calendar
+  mode="month"
+  /* ... */
+  onPressCell={(day) => openNewAppointment(day)} // midnight of the tapped day
+  onPressDay={(day) => {
+    setDate(day);
+    setMode("day");
+  }}
+/>
+```
+
+Replace parts of the cell with `renderCustomDateForMonth` (the date badge) or a
+custom `renderEvent` (see [Custom events](/guides/events)); restyle everything
+else through the [theme](/guides/theming) or per-slot [classes](/guides/styling).
+
+## Dragging
+
+Month cells and chips are draggable too: pass `onCreateEvent` to sweep out an
+all-day span across days, and `onDragEvent` to drop an event on another day
+(keeping its time of day and duration). See
+[Drag & create](/guides/dragging#on-the-month-grid).
 
 Looking for a vertically scrolling list of months instead of a pager, or an
 events-free month grid for picking dates? That's [MonthList](/guides/month-list).

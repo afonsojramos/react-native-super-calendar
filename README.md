@@ -88,6 +88,7 @@ partial-weeks) / **agenda (`schedule`)** modes, **all-day events** (lane +
 `minHour`/`maxHour`, `ampm` (hour axis and event times), `showTime`, `timeslots`,
 `hideHours`, `showWeekNumber`, `weekNumberPrefix`, `hourComponent`,
 `sortedMonthView`, `moreLabel`, `showAdjacentMonths`, `showSixWeeks`,
+`showTitle` (hide the built-in month label when your own header shows it),
 `disableMonthEventCellPress`, a default month weekday header
 (`renderHeaderForMonthView`), a custom month date badge
 (`renderCustomDateForMonth`), `activeDate`, per-event
@@ -361,6 +362,28 @@ cancels an in-progress sweep before it commits.
 />
 ```
 
+**On the month grid.** Both handlers also work in `mode="month"`, on both
+renderers. `onCreateEvent` sweeps across day cells to create an **all-day** span
+(`start` at midnight of the first day, `end` at midnight after the last), and
+`onDragEvent` drops an event bar on another day, shifting both ends by the days
+dragged so the **time of day and duration are preserved**. Grab with a
+**long-press** on native, a **press-drag** on web. The same locks apply
+(`draggable`, `startEditable`, `eventStartEditable`, `eventOverlap`, and
+returning `false` to reject); there is no resize on the month grid.
+
+```tsx
+<Calendar
+  mode="month"
+  /* ... */
+  onCreateEvent={(start, end) =>
+    setEvents((prev) => [...prev, { id: makeId(), title: "New", start, end, allDay: true }])
+  }
+  onDragEvent={(event, start, end) =>
+    setEvents((prev) => prev.map((e) => (e.id === event.id ? { ...e, start, end } : e)))
+  }
+/>
+```
+
 ### Recurring events
 
 Give an event a `recurrence` rule and expand it into concrete occurrences for the
@@ -589,6 +612,8 @@ paging follows the system scroll direction — so enable React Native's
 - `ampm` switches hour labels to 12-hour AM/PM (default 24h).
 - `onPressCell(date)` fires when empty grid space is tapped, with the date+time
   under the touch — handy for "create event". (Event taps still go to `onPressEvent`.)
+  In `month` mode it fires for a day cell too, with that day at midnight, so one
+  handler covers every view; `onPressDay` still fires alongside it for drill-down.
 - **Long-press** mirrors every tap: `onLongPressEvent(event)`, `onLongPressCell(date)`
   (week/day), and `onLongPressDay(date)` (month). All optional.
 - **All-day events** render in a lane above the time grid (and as chips or
