@@ -9,7 +9,7 @@ badges with a centered rounded "pill" band across the span; today keeps its own
 badge. Pass `fillCellOnSelection` to fill the whole cell instead of the pill.
 
 `Calendar` takes the same props in `month` and `year` modes, so an events
-calendar can carry a selection too — see [In the calendar](#in-the-calendar).
+calendar can carry a selection too. See [In the calendar](#in-the-calendar).
 
 ## Range selection with useDateRange
 
@@ -85,11 +85,11 @@ const { range, onPressDate, selectRange } = useDateRange({ minDate });
 
 ## In the calendar
 
-`Calendar` accepts `selectedDates`, `selectedRange`, `fillCellOnSelection`,
-`minDate`, `maxDate`, `isDateDisabled`, and `onSelectDrag` in `month` and `year`
-modes, drawn exactly as they are in the picker. So the same selection model works
-on top of a calendar that also shows events — pick a range to filter a report,
-block out a holiday, choose the days a new event should span.
+`Calendar` accepts `selectedDates`, `selectedRange`, `minDate`, `maxDate`,
+`isDateDisabled`, and `onSelectDrag` in `month` and `year` modes, drawn exactly
+as they are in the picker (`fillCellOnSelection` applies to the month grid only). So the same selection model works
+on top of a calendar that also shows events: pick a range to filter a report,
+block out a holiday, or choose the days a new event should span.
 
 ```tsx
 const { range, onPressDate, selectRange } = useDateRange();

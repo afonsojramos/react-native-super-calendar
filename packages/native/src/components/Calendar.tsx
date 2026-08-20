@@ -121,7 +121,7 @@ export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   /**
    * Month and year modes: reports a create sweep's day span as it happens, as the
    * ordered inclusive `[start, end]` days, so a selection highlight can follow the
-   * drag — pair it with `useDateRange`'s `selectRange` to drive `selectedRange`.
+   * drag. Pair it with `useDateRange`'s `selectRange` to drive `selectedRange`.
    * Enables the sweep on its own, so it works without `onCreateEvent`.
    */
   onSelectDrag?: (start: Date, end: Date) => void;

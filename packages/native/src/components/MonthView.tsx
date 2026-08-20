@@ -233,7 +233,7 @@ export type MonthViewProps<T> = SlotStyleProps<MonthViewSlot> & {
   /**
    * Reports the day span of a create sweep **as it happens**, as the ordered
    * inclusive `[start, end]` days (both at midnight), so a selection highlight can
-   * follow the drag instead of appearing only on release — pair it with
+   * follow the drag instead of appearing only on release. Pair it with
    * `useDateRange`'s `selectRange` to drive `selectedRange`. Enables the sweep on
    * its own, so it works without `onCreateEvent`.
    */

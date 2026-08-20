@@ -121,3 +121,9 @@ day cells carry `data-today`, `data-events`, `data-selected`, `data-range`,
 `data-disabled`, and `data-creating` for Tailwind variants. The theme's
 `todayBackground` / `todayText` drive the badge and dots, and `rangeBackground`
 the selection band.
+
+<Note>
+  The today / selected circle now lives on the `dayBadge` slot, not `day` (which is the cell around
+  it), matching the month grid. If you were restyling that circle through `classNames.day` or
+  `styles.day`, move those overrides to `dayBadge`.
+</Note>

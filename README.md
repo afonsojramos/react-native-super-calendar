@@ -459,9 +459,9 @@ and height are the `rangeBackground` / `rangeBandHeight` theme tokens; pass
 of the pill.
 
 **In the calendar.** `Calendar` accepts `selectedDates`, `selectedRange`,
-`fillCellOnSelection`, `minDate`, `maxDate`, `isDateDisabled`, and `onSelectDrag`
-in `month` and `year` modes, so the same model works on a grid that also shows
-events. On the month grid a sweep starts from empty day space (dragging a chip
+`minDate`, `maxDate`, `isDateDisabled`, and `onSelectDrag` in `month` and `year`
+modes, so the same model works on a grid that also shows events
+(`fillCellOnSelection` applies to the month grid only). On the month grid a sweep starts from empty day space (dragging a chip
 moves the event instead); on the year grid any day starts one.
 
 **Disabled days.** `minDate`, `maxDate` and `isDateDisabled` render days dimmed,
