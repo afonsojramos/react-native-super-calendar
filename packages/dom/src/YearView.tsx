@@ -71,7 +71,7 @@ export interface YearViewProps<T = unknown>
   onPressMonth?: (month: Date) => void;
   /**
    * Enables drag-to-select and reports the swept span live, as the ordered
-   * inclusive `[start, end]` days (both at midnight) — pair it with
+   * inclusive `[start, end]` days (both at midnight). Pair it with
    * `useDateRange`'s `selectRange` to drive `selectedRange`. Fires on every day the
    * pointer crosses, so the highlight follows the drag; `onCreateEvent` (when also
    * set) fires once on release. Either handler enables the same sweep gesture, and
@@ -133,11 +133,16 @@ export function YearView<T = unknown>({
   creatingRef.current = creating;
   const movedRef = useRef(false);
   // Set when a sweep commits, so the click the browser fires next doesn't also
-  // open the day via onPressDay.
+  // open the day via onPressDay. A sweep that ends over a different cell than it
+  // began on gets its trailing click on their common ancestor instead, where no
+  // handler consumes the guard, so every fresh press clears it first.
   const suppressClickRef = useRef(false);
+  const beginPress = () => {
+    suppressClickRef.current = false;
+    movedRef.current = false;
+  };
   const beginCreate = (day: Date) => {
     const t = startOfDay(day).getTime();
-    movedRef.current = false;
     setCreating({ anchor: t, hover: t });
   };
   const extendCreate = (day: Date) => {
@@ -280,9 +285,10 @@ export function YearView<T = unknown>({
                           />
                         );
                       }
+                      const isToday = getIsToday(day);
                       const isHighlighted = activeDate
                         ? isSameCalendarDay(day, activeDate)
-                        : getIsToday(day);
+                        : isToday;
                       const hasEvents = eventDays.has(startOfDay(day).toISOString());
                       // Selection/disabled flags come from core, so the year grid
                       // can't disagree with the month grid about a day's state.
@@ -297,7 +303,7 @@ export function YearView<T = unknown>({
                         dayTime >= Math.min(creating.anchor, creating.hover) &&
                         dayTime <= Math.max(creating.anchor, creating.hover);
                       const label = `${format(day, "EEEE, d LLLL yyyy", { locale })}${
-                        getIsToday(day) ? ", today" : ""
+                        isToday ? ", today" : ""
                       }${state.isSelected ? ", selected" : ""}${
                         state.isDisabled ? ", unavailable" : ""
                       }${hasEvents ? ", has events" : ""}`;
@@ -320,8 +326,10 @@ export function YearView<T = unknown>({
                               ? "pointer"
                               : "default",
                           boxSizing: "border-box",
-                          // A sweep must not be stolen by the page's touch scroll.
-                          ...(sweepEnabled ? { touchAction: "none" as const } : null),
+                          // The year grid scrolls vertically, so only the sideways
+                          // axis is handed to the sweep: a vertical swipe still
+                          // scrolls the months, a sideways drag sketches a range.
+                          ...(sweepEnabled ? { touchAction: "pan-y" as const } : null),
                         },
                         themed: {
                           fontSize: 11,
@@ -331,7 +339,7 @@ export function YearView<T = unknown>({
                       const states = dataState({
                         // `data-today` states the fact; the activeDate highlight is
                         // visual only (themed), so the two can differ.
-                        "data-today": getIsToday(day),
+                        "data-today": isToday,
                         "data-events": hasEvents,
                         "data-selected": state.isSelected,
                         "data-range": state.isInRange,
@@ -414,17 +422,21 @@ export function YearView<T = unknown>({
                           {dot}
                         </>
                       );
+                      // A disabled day is out of every selection, drag included, so
+                      // it neither anchors a sweep nor extends one onto itself.
                       const sweepHandlers = sweepEnabled
                         ? {
-                            onPointerDown: state.isDisabled
-                              ? undefined
-                              : (e: ReactPointerEvent) => {
-                                  if (e.button === 0) beginCreate(day);
-                                },
-                            onPointerEnter: () => extendCreate(day),
+                            onPointerDown: (e: ReactPointerEvent) => {
+                              beginPress();
+                              if (e.button === 0 && !state.isDisabled) beginCreate(day);
+                            },
+                            onPointerEnter: state.isDisabled ? undefined : () => extendCreate(day),
                           }
                         : null;
-                      return onPressDay || sweepEnabled ? (
+                      // Only a day that does something on click is a button: with
+                      // just the sweep wired, a button per day would be a tab stop
+                      // whose click and Enter do nothing.
+                      return onPressDay ? (
                         <button
                           key={day.toISOString()}
                           type="button"
@@ -436,7 +448,7 @@ export function YearView<T = unknown>({
                               suppressClickRef.current = false;
                               return;
                             }
-                            onPressDay?.(day);
+                            onPressDay(day);
                           }}
                           {...sweepHandlers}
                           {...states}
@@ -444,6 +456,18 @@ export function YearView<T = unknown>({
                         >
                           {content}
                         </button>
+                      ) : sweepEnabled ? (
+                        <div
+                          key={day.toISOString()}
+                          role="gridcell"
+                          aria-disabled={state.isDisabled || undefined}
+                          aria-label={label}
+                          {...sweepHandlers}
+                          {...states}
+                          {...daySlot}
+                        >
+                          {content}
+                        </div>
                       ) : (
                         <div
                           key={day.toISOString()}

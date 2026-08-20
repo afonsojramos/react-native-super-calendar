@@ -94,6 +94,63 @@ describe("dom YearView", () => {
       fireEvent.pointerUp(window);
     });
 
+    it("does not swallow the click after a sweep that ended on another cell", () => {
+      const onSelectDrag = jest.fn();
+      const onPressDay = jest.fn();
+      const { container } = render(
+        <YearView
+          date={new Date(2026, 6, 20)}
+          onSelectDrag={onSelectDrag}
+          onPressDay={onPressDay}
+        />,
+      );
+      fireEvent.pointerDown(day(container, "Wednesday, 15 July 2026"), { button: 0 });
+      fireEvent.pointerEnter(day(container, "Friday, 17 July 2026"));
+      // The sweep's trailing click lands on an ancestor, so no cell consumes the
+      // guard it armed; the next real click must still get through.
+      fireEvent.pointerUp(window);
+
+      const cell = day(container, "Monday, 20 July 2026");
+      fireEvent.pointerDown(cell, { button: 0 });
+      fireEvent.pointerUp(window);
+      fireEvent.click(cell);
+      expect(onPressDay).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps disabled days out of the sweep", () => {
+      const onSelectDrag = jest.fn();
+      const onCreateEvent = jest.fn();
+      const { container } = render(
+        <YearView
+          date={new Date(2026, 6, 20)}
+          minDate={new Date(2026, 6, 15)}
+          onSelectDrag={onSelectDrag}
+          onCreateEvent={onCreateEvent}
+        />,
+      );
+      // Anchoring on a day before minDate starts nothing.
+      fireEvent.pointerDown(day(container, "Monday, 13 July 2026"), { button: 0 });
+      fireEvent.pointerEnter(day(container, "Friday, 17 July 2026"));
+      fireEvent.pointerUp(window);
+      expect(onSelectDrag).not.toHaveBeenCalled();
+      expect(onCreateEvent).not.toHaveBeenCalled();
+
+      // A live sweep never extends onto one either.
+      fireEvent.pointerDown(day(container, "Friday, 17 July 2026"), { button: 0 });
+      fireEvent.pointerEnter(day(container, "Monday, 13 July 2026"));
+      expect(onSelectDrag).not.toHaveBeenCalled();
+      fireEvent.pointerUp(window);
+    });
+
+    it("renders day cells as plain gridcells when only the sweep is wired", () => {
+      const { container } = render(
+        <YearView date={new Date(2026, 6, 20)} onSelectDrag={jest.fn()} />,
+      );
+      // A button per day would be a tab stop whose click and Enter do nothing.
+      expect(container.querySelectorAll("button").length).toBe(0);
+      expect(day(container, "Wednesday, 15 July 2026").tagName).toBe("DIV");
+    });
+
     it("leaves a plain click to onPressDay", () => {
       const onCreateEvent = jest.fn();
       const onPressDay = jest.fn();
