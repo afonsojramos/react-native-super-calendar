@@ -283,7 +283,13 @@ function MonthPagerInner<T>({
   // `events` (events that arrive after mount, e.g. from an async fetch, must
   // repaint the mounted page) and `activeDate` (the selected-day highlight must
   // move). Mirrors listExtraData in TimeGrid.
-  const listExtraData = useMemo(() => ({ events, activeDate }), [events, activeDate]);
+  // `fillCellOnSelection` and `onSelectDrag` ride along because they reach the
+  // grids as renderItem props, not through the selection context below: toggling
+  // a "pick dates" mode on must reach the pages already rendered.
+  const listExtraData = useMemo(
+    () => ({ events, activeDate, fillCellOnSelection, dragSelect: onSelectDrag != null }),
+    [events, activeDate, fillCellOnSelection, onSelectDrag],
+  );
 
   // Selection reaches the grids through context, not `renderItem`, so a change
   // repaints the pages LegendList has already cached (which `extraData` alone
