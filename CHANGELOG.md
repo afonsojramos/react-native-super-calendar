@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.9.0](https://github.com/afonsojramos/super-calendar/compare/v2.8.2...v2.9.0) (2026-08-24)
+
+
+### Features
+
+* **core:** add day-range and day-shift drag helpers ([18abab4](https://github.com/afonsojramos/super-calendar/commit/18abab41d990b2b9524daa5ed1709a79b38b07ad))
+* **dom:** add date selection and drag-to-create to the year grid ([ad62176](https://github.com/afonsojramos/super-calendar/commit/ad62176bdb94c5970f254e8348cece5bceddca86))
+* **dom:** support selecting, creating and moving events on the month grid ([1d36e7a](https://github.com/afonsojramos/super-calendar/commit/1d36e7a68cbbdce5a45b9c7374c9e2a6760ca92a))
+* **month:** hide the built-in title, and add cell press and drag support ([#45](https://github.com/afonsojramos/super-calendar/issues/45)) ([78da855](https://github.com/afonsojramos/super-calendar/commit/78da85514e98d229061ebee369e51f63767a56f4))
+* move time-grid events past midnight ([#48](https://github.com/afonsojramos/super-calendar/issues/48)) ([2d81c7e](https://github.com/afonsojramos/super-calendar/commit/2d81c7e15fcecca071d3b1a539bef548ecda2dc9))
+* **native:** add date selection and drag-to-create to the year grid ([30350a8](https://github.com/afonsojramos/super-calendar/commit/30350a854d8f0c787f490d83d2004b253cf73040))
+* **native:** forward selection and drag handlers through the month pager ([be9d056](https://github.com/afonsojramos/super-calendar/commit/be9d056f04a88cce462366e59890849475be67ea))
+* **native:** support selecting, creating and moving events on the month grid ([821960c](https://github.com/afonsojramos/super-calendar/commit/821960cf24ecf0ec121a13a45413b3a7c9f52aea))
+* wire month and year selection and drag handlers through Calendar ([6136bfb](https://github.com/afonsojramos/super-calendar/commit/6136bfb9ecd1a31968f2530197318aa0ce78e9f4))
+* **year:** add date selection, drag-to-select and drag-to-create ([#47](https://github.com/afonsojramos/super-calendar/issues/47)) ([f93393a](https://github.com/afonsojramos/super-calendar/commit/f93393a862e31c6425f9980adcd0c9002a9a63e4))
+
+
+### Bug Fixes
+
+* **dom:** harden the year grid's drag-to-select ([c61d11c](https://github.com/afonsojramos/super-calendar/commit/c61d11cef7d2d8511f0d245beb9bc2a56977a5ce))
+* **dom:** keep disabled days out of a month sweep and drop ([b3215ac](https://github.com/afonsojramos/super-calendar/commit/b3215ac4ba695504bcde85be43d006647b3cb8ff))
+* **native:** harden the year grid's drag-to-select ([dd4cc43](https://github.com/afonsojramos/super-calendar/commit/dd4cc4312ebfdaefd0f14dbfcb039eb890093d1a))
+* **native:** repaint cached month pages when the sweep props change ([a0f6943](https://github.com/afonsojramos/super-calendar/commit/a0f69439a751f05938fa19c4727285a2193877a8))
+
 ## [2.8.2](https://github.com/afonsojramos/super-calendar/compare/v2.8.1...v2.8.2) (2026-08-20)
 
 
