@@ -441,6 +441,7 @@ function AnimatedEventBox<T>({
   // ("Cannot copy value of type `Date`").
   const startHours = positioned.startHours;
   const durationHours = positioned.durationHours;
+  const ownsStart = !positioned.continuesBefore;
   // Where the move gesture clamps from, mirrored into a shared value so it isn't a
   // gesture dependency. A gesture memoized on a value the dragged event carries
   // would be rebuilt under the finger, and so torn down mid-drag, the moment a
@@ -450,9 +451,9 @@ function AnimatedEventBox<T>({
   const dragStartSV = useDerivedValue(
     () => ({
       minutes: startHours * MINUTES_PER_HOUR,
-      ownsStart: !positioned.continuesBefore,
+      ownsStart,
     }),
-    [startHours, positioned.continuesBefore],
+    [startHours, ownsStart],
   );
 
   // Live pixel height of the box, driven on the UI thread by the shared
@@ -468,6 +469,17 @@ function AnimatedEventBox<T>({
     [durationHours],
   );
 
+  // The source segment may stop at midnight while the full event continues in
+  // the next column. Keep the height passed to custom renderers identical to the
+  // wrapper they fill, while `boxHeight` retains the complete duration for drag
+  // math and the floating cross-page ghost.
+  const visibleBoxHeight = useDerivedValue(() => {
+    const top =
+      (startHours - minHour) * cellHeight.value + moveOffset.value + resizeStartDelta.value;
+    const dayEnd = (HOURS_PER_DAY - minHour) * cellHeight.value;
+    return Math.max(Math.min(boxHeight.value, dayEnd - top), MIN_EVENT_HEIGHT);
+  }, [startHours, minHour]);
+
   const boxStyle = useAnimatedStyle(() => {
     // A top-edge resize pushes the box down and shortens it (start moves later).
     const top =
@@ -477,14 +489,13 @@ function AnimatedEventBox<T>({
     // already renders. Purely geometric, so a resting box (already clipped to the
     // day by `layoutDayEvents`) is untouched and the height doesn't jump when a
     // drag commits.
-    const dayEnd = (HOURS_PER_DAY - minHour) * cellHeight.value;
     return {
       top,
-      height: Math.max(Math.min(boxHeight.value, dayEnd - top), MIN_EVENT_HEIGHT),
+      height: visibleBoxHeight.value,
       transform: [{ translateX: moveOffsetX.value }],
       zIndex: dragZ.value,
     };
-  }, [startHours, durationHours, minHour]);
+  }, [startHours, minHour]);
 
   // Pixel height of the part of a move that runs past midnight, or 0 when nothing
   // spills. Measured against the end of the day, not `maxHour`: a narrowed window
@@ -939,7 +950,7 @@ function AnimatedEventBox<T>({
       <RenderEventComponent
         event={positioned.event}
         mode={mode}
-        boxHeight={boxHeight}
+        boxHeight={visibleBoxHeight}
         continuesBefore={positioned.continuesBefore}
         continuesAfter={positioned.continuesAfter}
         accessibilityActions={accessibilityActions}

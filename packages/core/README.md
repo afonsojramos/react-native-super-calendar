@@ -43,6 +43,16 @@ import { useDateRange } from "@super-calendar/core";
 const range = useDateRange({ mode: "range" });
 ```
 
+For a custom time-grid drag, `clampMoveStartMinutes` keeps the moved event's
+start inside the visible hour window while allowing its unchanged duration to
+carry the end past midnight:
+
+```ts
+import { clampMoveStartMinutes } from "@super-calendar/core";
+
+const startMinutes = clampMoveStartMinutes(rawStartMinutes, minHour, maxHour, snapMinutes);
+```
+
 ## Documentation
 
 See the [full documentation](https://super-calendar.afonsojramos.me) and the [API reference](https://super-calendar.afonsojramos.me/reference/api).

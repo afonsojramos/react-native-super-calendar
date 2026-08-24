@@ -117,3 +117,9 @@ and `minDate` / `maxDate` / `isDateDisabled` for disabled days. See the
     `MonthEventSegment`, `MonthWeekEvents`, `MonthListProps`, `CalendarSlot`, `SlotStyleProps`
   </Card>
 </CardGroup>
+
+## Core-only helpers
+
+`@super-calendar/core` also exports `clampMoveStartMinutes`. Use it when a custom
+time-grid drag must keep the moved start inside the visible hour window without
+shortening an event that continues past midnight.
