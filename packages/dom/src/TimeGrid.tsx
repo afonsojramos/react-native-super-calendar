@@ -662,14 +662,14 @@ export function TimeGrid<T = unknown>({
     const snap = (v: number) => Math.round(v / snapHours) * snapHours;
     if (d.kind === "move") {
       // Only the start is held inside the window; the end may run past the end of
-      // the day, continuing on the next one (see `clampMoveStartMinutes`).
-      const startHours =
-        clampMoveStartMinutes(
-          snap(dragOrigin.current.startHours + dHours) * 60,
-          windowStart,
-          windowEnd,
-          dragStepMinutes,
-        ) / 60;
+      // the day, continuing on the next one (see `clampMoveStartMinutes`). A
+      // segment that continues *before* is skipped: its 00:00 top edge is where the
+      // layout clipped the event, not where the event starts, so holding it there
+      // would make the tail of a midnight-spanning event impossible to drag earlier.
+      const raw = snap(dragOrigin.current.startHours + dHours);
+      const startHours = d.continuesBefore
+        ? raw
+        : clampMoveStartMinutes(raw * 60, windowStart, windowEnd, dragStepMinutes) / 60;
       // Map the horizontal drag to whole day columns, clamped so the in-view box
       // can't leave the visible range (mirrors the native renderer). Once paged,
       // the drop day comes from the hit-test instead.

@@ -441,12 +441,19 @@ function AnimatedEventBox<T>({
   // ("Cannot copy value of type `Date`").
   const startHours = positioned.startHours;
   const durationHours = positioned.durationHours;
-  // Mirrored into a shared value so the move gesture can clamp against the
-  // segment's start without listing it as a dependency. A gesture memoized on a
-  // value the dragged event carries would be rebuilt under the finger, and so torn
-  // down mid-drag, the moment a consumer updates `events` (the same reason
-  // `commitDrag` reads the event through `latest`).
-  const startMinutesSV = useDerivedValue(() => startHours * MINUTES_PER_HOUR, [startHours]);
+  // Where the move gesture clamps from, mirrored into a shared value so it isn't a
+  // gesture dependency. A gesture memoized on a value the dragged event carries
+  // would be rebuilt under the finger, and so torn down mid-drag, the moment a
+  // consumer updates `events` (the same reason `commitDrag` reads the event
+  // through `latest`). `ownsStart` is false on a segment the layout clipped from
+  // an earlier day, whose 00:00 top edge isn't where the event starts.
+  const dragStartSV = useDerivedValue(
+    () => ({
+      minutes: startHours * MINUTES_PER_HOUR,
+      ownsStart: !positioned.continuesBefore,
+    }),
+    [startHours, positioned.continuesBefore],
+  );
 
   // Live pixel height of the box, driven on the UI thread by the shared
   // cellHeight (plus any in-progress resize). Handed to renderEvent so custom
@@ -677,9 +684,11 @@ function AnimatedEventBox<T>({
           // Hold the start inside the day; the end is free to run past it (the
           // spill preview shows where it lands). Same rule the commit applies, so
           // the box never previews a position it can't be dropped in.
-          const startMinutes = startMinutesSV.value;
+          const { minutes: startMinutes, ownsStart } = dragStartSV.value;
           const dragged = startMinutes + (event.translationY / cellHeight.value) * MINUTES_PER_HOUR;
-          const held = clampMoveStartMinutes(dragged, minHour, maxHour, snapMinutes);
+          const held = ownsStart
+            ? clampMoveStartMinutes(dragged, minHour, maxHour, snapMinutes)
+            : dragged;
           moveOffset.value = ((held - startMinutes) / MINUTES_PER_HOUR) * cellHeight.value;
           moveOffsetX.value = event.translationX;
         }
@@ -702,17 +711,17 @@ function AnimatedEventBox<T>({
         // gesture ends cleanly or is cancelled as the page moves under it), so the
         // drop lands even when onEnd doesn't fire on device. Nothing to do here.
         if (lifted.value) return;
-        const startMinutes = startMinutesSV.value;
+        const { minutes: startMinutes, ownsStart } = dragStartSV.value;
         // Snap the vertical drag, then hold the start inside the day: a move keeps
         // its duration, so the end may run past midnight and continue on the next
-        // day, but the event still starts in the column it was dropped on.
-        const minuteDelta =
-          clampMoveStartMinutes(
-            startMinutes + snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes),
-            minHour,
-            maxHour,
-            snapMinutes,
-          ) - startMinutes;
+        // day, but the event still starts in the column it was dropped on. A
+        // segment clipped from an earlier day is exempt: it doesn't own the start,
+        // so holding it would stop the whole event from being dragged earlier.
+        const snapped = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
+        const minuteDelta = ownsStart
+          ? clampMoveStartMinutes(startMinutes + snapped, minHour, maxHour, snapMinutes) -
+            startMinutes
+          : snapped;
         // Map the horizontal drag to whole day columns, clamped so the event
         // can't leave the visible range.
         const rawDayDelta = dayWidth > 0 ? Math.round(event.translationX / dayWidth) : 0;
@@ -768,7 +777,7 @@ function AnimatedEventBox<T>({
     moveOffsetX,
     dragZ,
     moving,
-    startMinutesSV,
+    dragStartSV,
     minHour,
     maxHour,
     edgeDir,
