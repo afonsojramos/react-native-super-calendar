@@ -233,6 +233,217 @@ describe("dom TimeGrid", () => {
     expect(end.getHours()).toBe(16);
   });
 
+  it("drag-moves an event past the end of the day, continuing it on the next one", () => {
+    const onDragEvent = jest.fn();
+    const late: CalendarEvent[] = [
+      { title: "Gig", start: new Date(2026, 5, 26, 19, 0), end: new Date(2026, 5, 26, 23, 0) },
+    ];
+    const { getByText } = render(
+      <TimeGrid date={day} mode="week" events={late} hourHeight={48} onDragEvent={onDragEvent} />,
+    );
+    const box = wrapperOf(getByText("Gig"));
+    // Down 96px = 2h at 48px/hour: 19:00–23:00 -> 21:00 on the 26th to 01:00 on
+    // the 27th. The end is free to run past midnight; only the start is held in
+    // the day it was dropped on.
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 396, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 396, pointerId: 1 });
+
+    expect(onDragEvent).toHaveBeenCalledTimes(1);
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect([start.getDate(), start.getHours()]).toEqual([26, 21]);
+    expect([end.getDate(), end.getHours()]).toEqual([27, 1]);
+  });
+
+  it("holds a moved start inside the day, one snap step before its end", () => {
+    const onDragEvent = jest.fn();
+    const late: CalendarEvent[] = [
+      { title: "Gig", start: new Date(2026, 5, 26, 19, 0), end: new Date(2026, 5, 26, 23, 0) },
+    ];
+    const { getByText } = render(
+      <TimeGrid date={day} mode="week" events={late} hourHeight={48} onDragEvent={onDragEvent} />,
+    );
+    const box = wrapperOf(getByText("Gig"));
+    // Far past the bottom of the grid: the start stops at 23:45 (24:00 less one
+    // 15-minute step) rather than rolling the whole event onto the next day.
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 1500, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 1500, pointerId: 1 });
+
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect([start.getDate(), start.getHours(), start.getMinutes()]).toEqual([26, 23, 45]);
+    expect([end.getDate(), end.getHours(), end.getMinutes()]).toEqual([27, 3, 45]);
+  });
+
+  it("does not preview a next-day spill for an event that only leaves the visible window", () => {
+    const onDragEvent = jest.fn();
+    // The window ends at 18:00, so this event already runs past the bottom of the
+    // grid without touching midnight. Moving it must not claim it spills.
+    const late: CalendarEvent[] = [
+      { title: "Shift", start: new Date(2026, 5, 26, 15, 0), end: new Date(2026, 5, 26, 19, 0) },
+    ];
+    const { getByText, container } = render(
+      <TimeGrid
+        date={day}
+        mode="week"
+        events={late}
+        hourHeight={48}
+        minHour={8}
+        maxHour={18}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const box = wrapperOf(getByText("Shift"));
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 348, pointerId: 1 });
+    expect(container.querySelectorAll("[data-dragging]")).toHaveLength(1);
+    fireEvent.pointerUp(box, { clientY: 348, pointerId: 1 });
+
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect([start.getDate(), start.getHours()]).toEqual([26, 16]);
+    expect([end.getDate(), end.getHours()]).toEqual([26, 20]);
+  });
+
+  it("anchors the next-day preview at midnight, not at the top of the visible window", () => {
+    const late: CalendarEvent[] = [
+      { title: "Gig", start: new Date(2026, 5, 26, 22, 0), end: new Date(2026, 5, 26, 23, 0) },
+    ];
+    const { getByText, container } = render(
+      <TimeGrid
+        date={day}
+        mode="week"
+        events={late}
+        hourHeight={48}
+        minHour={8}
+        onDragEvent={jest.fn()}
+      />,
+    );
+    const box = wrapperOf(getByText("Gig"));
+    // Down 96px = 2h: 22:00–23:00 -> 00:00–01:00 on the 27th. The tail belongs at
+    // midnight, which is 8 hours (384px) above the 08:00 top of this grid.
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 396, pointerId: 1 });
+    const preview = [...container.querySelectorAll("[data-dragging]")].find((el) =>
+      el.hasAttribute("aria-hidden"),
+    ) as HTMLElement;
+    expect(preview.style.top).toBe("-384px");
+    fireEvent.pointerUp(box, { clientY: 396, pointerId: 1 });
+  });
+
+  it("keeps a multi-day event whole when one of its day segments is dragged", () => {
+    const onDragEvent = jest.fn();
+    const trip: CalendarEvent[] = [
+      { title: "Trip", start: new Date(2026, 5, 24, 17, 0), end: new Date(2026, 5, 26, 21, 0) },
+    ];
+    const { getAllByText } = render(
+      <TimeGrid date={day} mode="week" events={trip} hourHeight={48} onDragEvent={onDragEvent} />,
+    );
+    // The middle segment (the 25th) owns neither the real start nor the real end.
+    const box = wrapperOf(getAllByText("Trip")[1]);
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 348, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 348, pointerId: 1 });
+
+    expect(onDragEvent).toHaveBeenCalledTimes(1);
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    // The whole event slides an hour later; the days outside the dragged
+    // segment survive instead of being clipped to it.
+    expect([start.getDate(), start.getHours()]).toEqual([24, 18]);
+    expect([end.getDate(), end.getHours()]).toEqual([26, 22]);
+  });
+
+  it("offers the bottom resize grip only on the segment that owns the event's end", () => {
+    const trip: CalendarEvent[] = [
+      { title: "Trip", start: new Date(2026, 5, 24, 22, 0), end: new Date(2026, 5, 26, 10, 0) },
+    ];
+    const { getAllByText } = render(
+      <TimeGrid date={day} mode="week" events={trip} hourHeight={48} onDragEvent={jest.fn()} />,
+    );
+    const bottomGrip = (box: HTMLElement) =>
+      Array.from(box.querySelectorAll<HTMLElement>('div[style*="ns-resize"]')).filter(
+        (el) => el.style.bottom === "0px",
+      );
+    // The 24th's and 25th's segments end at the day boundary, not at the event's
+    // end, so dragging their bottom edge would move an end the user can't see.
+    expect(bottomGrip(wrapperOf(getAllByText("Trip")[0]))).toHaveLength(0);
+    expect(bottomGrip(wrapperOf(getAllByText("Trip")[1]))).toHaveLength(0);
+    // The 26th's segment owns the real end and keeps its grip.
+    expect(bottomGrip(wrapperOf(getAllByText("Trip")[2]))).toHaveLength(1);
+  });
+
+  it("drags the tail of a midnight-spanning event earlier, moving the whole event", () => {
+    const onDragEvent = jest.fn();
+    // 22:00 on the 26th to 02:00 on the 27th, so the 27th's segment is a 00:00
+    // continuation: its top edge is where the layout clipped it, not the start.
+    const overnight: CalendarEvent[] = [
+      { title: "Night", start: new Date(2026, 5, 26, 22, 0), end: new Date(2026, 5, 27, 2, 0) },
+    ];
+    const { getAllByText } = render(
+      <TimeGrid
+        date={day}
+        mode="week"
+        events={overnight}
+        hourHeight={48}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const tail = wrapperOf(getAllByText("Night")[1]);
+    // Up 48px = 1h. Held at 00:00 the drag would be a no-op; the whole event
+    // must shift an hour earlier instead.
+    fireEvent.pointerDown(tail, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(tail, { clientY: 252, pointerId: 1 });
+    fireEvent.pointerUp(tail, { clientY: 252, pointerId: 1 });
+
+    expect(onDragEvent).toHaveBeenCalledTimes(1);
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect([start.getDate(), start.getHours()]).toEqual([26, 21]);
+    expect([end.getDate(), end.getHours()]).toEqual([27, 1]);
+  });
+
+  it("preserves a sub-step event's duration through a drag", () => {
+    const onDragEvent = jest.fn();
+    // Shorter than the layout's minimum box, so it is drawn as 15 minutes. The
+    // commit must move it, not stretch it to what it was drawn as.
+    const tiny: CalendarEvent[] = [
+      { title: "Ping", start: new Date(2026, 5, 26, 9, 0), end: new Date(2026, 5, 26, 9, 5) },
+    ];
+    const { getByText } = render(
+      <TimeGrid date={day} mode="day" events={tiny} hourHeight={48} onDragEvent={onDragEvent} />,
+    );
+    const box = wrapperOf(getByText("Ping"));
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 324, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 324, pointerId: 1 });
+
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect([start.getHours(), start.getMinutes()]).toEqual([9, 30]);
+    expect([end.getHours(), end.getMinutes()]).toEqual([9, 35]);
+  });
+
+  it("survives a zero dragStepMinutes instead of committing an invalid date", () => {
+    const onDragEvent = jest.fn();
+    const { getByText } = render(
+      <TimeGrid
+        date={day}
+        mode="day"
+        events={events}
+        hourHeight={48}
+        dragStepMinutes={0}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const box = wrapperOf(getByText("Focus"));
+    // A zero step would divide by zero in the snap and put NaN through the whole
+    // commit; it falls back to a one-minute step, as on the native renderer.
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 348, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 348, pointerId: 1 });
+
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect(Number.isNaN(start.getTime())).toBe(false);
+    expect([start.getHours(), end.getHours()]).toEqual([15, 17]);
+  });
+
   it("clamps a cross-day drag to the edges of the visible week", () => {
     const onDragEvent = jest.fn();
     const { getByText } = render(

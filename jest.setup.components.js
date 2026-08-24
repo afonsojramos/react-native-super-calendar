@@ -13,15 +13,19 @@ jest.mock("react-native-gesture-handler", () => {
   const gestures = [];
   const makeChain = () => {
     const handlers = {};
+    const calls = {};
     const chain = new Proxy(() => chain, {
       get: (_target, prop) =>
         prop === "handlers"
           ? handlers
-          : (...args) => {
-              const callback = args.find((arg) => typeof arg === "function");
-              if (callback) handlers[prop] = callback;
-              return chain;
-            },
+          : prop === "calls"
+            ? calls
+            : (...args) => {
+                calls[prop] = args;
+                const callback = args.find((arg) => typeof arg === "function");
+                if (callback) handlers[prop] = callback;
+                return chain;
+              },
     });
     gestures.push(chain);
     return chain;
@@ -36,18 +40,52 @@ jest.mock("react-native-gesture-handler", () => {
 });
 
 jest.mock("react-native-reanimated", () => {
+  const React = require("react");
   const { View } = require("react-native");
+  const reactions = [];
+  const flushAnimatedReactions = () => {
+    for (const reaction of [...reactions]) {
+      const next = reaction.prepare();
+      const previous = reaction.previous;
+      reaction.previous = next;
+      if (next !== previous) reaction.react(next, previous);
+    }
+  };
   return {
     __esModule: true,
     default: { View, ScrollView: View, createAnimatedComponent: (component) => component },
     useAnimatedStyle: (factory) => factory(),
-    useDerivedValue: (factory) => ({ value: factory() }),
-    useSharedValue: (initial) => ({ value: initial }),
+    useDerivedValue: (factory) => {
+      const factoryRef = React.useRef(factory);
+      factoryRef.current = factory;
+      const valueRef = React.useRef();
+      if (!valueRef.current) {
+        valueRef.current = Object.defineProperty({}, "value", {
+          configurable: true,
+          get: () => factoryRef.current(),
+        });
+      }
+      return valueRef.current;
+    },
+    useSharedValue: (initial) => React.useRef({ value: initial }).current,
     useAnimatedRef: () => ({ current: null }),
-    useAnimatedReaction: () => {},
+    useAnimatedReaction: (prepare, react) => {
+      const reactionRef = React.useRef();
+      if (!reactionRef.current) {
+        const current = prepare();
+        reactionRef.current = { prepare, react, previous: current };
+        reactions.push(reactionRef.current);
+        react(current, null);
+      } else {
+        reactionRef.current.prepare = prepare;
+        reactionRef.current.react = react;
+      }
+    },
     useAnimatedScrollHandler: () => () => {},
     useReducedMotion: () => false,
     runOnJS: (fn) => fn,
     scrollTo: () => {},
+    __reactions: reactions,
+    __flushAnimatedReactions: flushAnimatedReactions,
   };
 });

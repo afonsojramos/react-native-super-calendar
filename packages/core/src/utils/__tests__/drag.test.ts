@@ -1,6 +1,7 @@
 import type { CalendarEvent } from "../../types";
 import {
   cellRangeFromDrag,
+  clampMoveStartMinutes,
   eventsOverlap,
   monthCreateRange,
   monthDropBounds,
@@ -88,6 +89,31 @@ describe("snapDeltaMinutes", () => {
   it("returns 0 for a degenerate grid", () => {
     expect(snapDeltaMinutes(50, 0, 15)).toBe(0);
     expect(snapDeltaMinutes(50, 64, 0)).toBe(0);
+  });
+});
+
+describe("clampMoveStartMinutes", () => {
+  it("leaves a start inside the window alone", () => {
+    expect(clampMoveStartMinutes(9 * 60, 0, 24, 15)).toBe(9 * 60);
+  });
+
+  it("lets the start reach one step before the end of the day", () => {
+    // The end is free to run past midnight, so only the start is held back.
+    expect(clampMoveStartMinutes(26 * 60, 0, 24, 15)).toBe(24 * 60 - 15);
+    expect(clampMoveStartMinutes(23 * 60 + 45, 0, 24, 15)).toBe(23 * 60 + 45);
+  });
+
+  it("holds the start at the top of the window", () => {
+    expect(clampMoveStartMinutes(-120, 0, 24, 15)).toBe(0);
+    expect(clampMoveStartMinutes(7 * 60, 8, 18, 15)).toBe(8 * 60);
+  });
+
+  it("respects a narrowed window and the snap step", () => {
+    expect(clampMoveStartMinutes(20 * 60, 8, 18, 30)).toBe(18 * 60 - 30);
+  });
+
+  it("never inverts when the step is wider than the window", () => {
+    expect(clampMoveStartMinutes(12 * 60, 9, 10, 120)).toBe(9 * 60);
   });
 });
 

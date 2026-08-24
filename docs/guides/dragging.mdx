@@ -27,6 +27,19 @@ range). New `start`/`end` are snapped to `dragStepMinutes` (default 15).
 />
 ```
 
+### Move an event past midnight
+
+A move keeps its duration, so dragging an event **down past the end of the day**
+lets its end run into the next one: the box cuts off at the day boundary and the
+remainder previews at the top of the next column, exactly where the committed
+event will render. The **start** stays in the day you dropped it on (it stops one
+`dragStepMinutes` step before the end of the day), so a move to a different day is
+still the horizontal drag.
+
+`onDragEvent` then receives a `start` and `end` on different dates. Dragging any
+day's segment of the resulting multi-day event moves the whole thing, so it never
+gets clipped to the day you grabbed.
+
 ### Hide the drag handle
 
 By default a small grip shows at each draggable event's bottom edge. Set

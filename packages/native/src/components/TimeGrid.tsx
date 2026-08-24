@@ -75,6 +75,7 @@ import {
 import {
   backgroundBandsForDay,
   cellRangeFromDrag,
+  clampMoveStartMinutes,
   useNow,
   closedHourBands,
   overlapsOtherEvents,
@@ -85,7 +86,12 @@ import {
 import { formatHour, layoutDayEvents, type PositionedEvent } from "@super-calendar/core";
 import type { EventAccessibilityLabeler } from "@super-calendar/core";
 import { type WeekdayFormat, weekdayFormatToken } from "@super-calendar/core";
-import { SlotStylesProvider, type SlotStyleProps, useSlots } from "../utils/slots";
+import {
+  type ResolvedSlot,
+  SlotStylesProvider,
+  type SlotStyleProps,
+  useSlots,
+} from "../utils/slots";
 import { useWebGridZoom } from "../utils/useWebGridZoom";
 import { useWebPagerKeys } from "../utils/useWebPagerKeys";
 import { withEventAccessibilityLabel } from "../utils/withEventAccessibilityLabel";
@@ -183,6 +189,78 @@ const EdgePagingContext = createContext<EdgePaging | null>(null);
 const noop = () => {};
 
 /**
+ * The tail of a move that runs past midnight, drawn at the top of the next day's
+ * column so the drop reads on both days before the finger lifts. Mounted only
+ * while a drag is actually spilling (see `spillHeight`), so an idle grid pays
+ * nothing for it; its geometry is driven on the UI thread from there.
+ */
+function MoveSpillPreview<T>({
+  spillHeight,
+  moveOffsetX,
+  cellHeight,
+  dayLeftPx,
+  dayWidth,
+  nextDayDirection,
+  minHour,
+  event,
+  mode,
+  renderEvent,
+  slotProps,
+}: {
+  spillHeight: SharedValue<number>;
+  moveOffsetX: SharedValue<number>;
+  cellHeight: SharedValue<number>;
+  dayLeftPx: number;
+  dayWidth: number;
+  nextDayDirection: number;
+  minHour: number;
+  event: CalendarEvent<T>;
+  mode: CalendarMode;
+  renderEvent: RenderEvent<T>;
+  slotProps: ResolvedSlot<ViewStyle>;
+}): ReactElement {
+  const RenderEventComponent = renderEvent;
+  const style = useAnimatedStyle(
+    () => ({
+      height: spillHeight.value,
+      opacity: spillHeight.value > 0 ? 1 : 0,
+      zIndex: spillHeight.value > 0 ? DRAG_EVENT_Z : 0,
+      transform: [
+        { translateX: moveOffsetX.value + nextDayDirection * dayWidth },
+        // The box's `top` is the `minHour` gridline, but the tail starts at
+        // midnight. With a window that starts after 00:00 this pushes the preview
+        // out of view, exactly like the continuation the drop will commit.
+        { translateY: -minHour * cellHeight.value },
+      ],
+    }),
+    [dayWidth, nextDayDirection, minHour],
+  );
+  return (
+    <Animated.View
+      {...slotProps}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[
+        styles.eventBox,
+        styles.nonInteractive,
+        { left: dayLeftPx, width: dayWidth, top: 0 },
+        slotProps.style,
+        style,
+      ]}
+    >
+      <RenderEventComponent
+        event={event}
+        mode={mode}
+        boxHeight={spillHeight}
+        continuesBefore
+        continuesAfter={false}
+        onPress={noop}
+      />
+    </Animated.View>
+  );
+}
+
+/**
  * The floating copy of a dragged event, rendered above the pager so a cross-week
  * drag stays visible after its source page pages away. Position, size, and
  * visibility are driven on the UI thread by the shared values so it tracks the
@@ -234,8 +312,14 @@ type AnimatedEventBoxProps<T> = {
   positioned: PositionedEvent<T>;
   cellHeight: SharedValue<number>;
   minHour: number;
+  maxHour: number;
   left: number;
   width: number;
+  // Left edge of the whole day column (the box's own `left` is inset by its
+  // overlap column), so the "runs past midnight" preview can span the next column.
+  dayLeftPx: number;
+  // Which way the next calendar day lies, in columns: +1 normally, -1 under RTL.
+  nextDayDirection: number;
   // Drag-to-move across days needs the column width and this box's day index
   // within the visible range, so a horizontal drag maps to (and clamps to) days.
   dayWidth: number;
@@ -269,8 +353,11 @@ function AnimatedEventBox<T>({
   positioned,
   cellHeight,
   minHour,
+  maxHour,
   left,
   width,
+  dayLeftPx,
+  nextDayDirection,
   dayWidth,
   dayIndex,
   dayCount,
@@ -331,6 +418,10 @@ function AnimatedEventBox<T>({
   // Raised to DRAG_EVENT_Z while a gesture is active so the dragged event floats
   // above all the others, then back to 0 when it settles.
   const dragZ = useSharedValue(0);
+  // 1 while a move gesture is running. Only gates the spill preview: the box's own
+  // clip is geometric, so it can't disagree with the box during the frames between
+  // release and the committed re-render.
+  const moving = useSharedValue(0);
   // Edge auto-advance: which side the drag has pushed past the visible columns
   // (-1 left / 0 none / +1 right).
   const edgeDir = useSharedValue(0);
@@ -350,6 +441,20 @@ function AnimatedEventBox<T>({
   // ("Cannot copy value of type `Date`").
   const startHours = positioned.startHours;
   const durationHours = positioned.durationHours;
+  const ownsStart = !positioned.continuesBefore;
+  // Where the move gesture clamps from, mirrored into a shared value so it isn't a
+  // gesture dependency. A gesture memoized on a value the dragged event carries
+  // would be rebuilt under the finger, and so torn down mid-drag, the moment a
+  // consumer updates `events` (the same reason `commitDrag` reads the event
+  // through `latest`). `ownsStart` is false on a segment the layout clipped from
+  // an earlier day, whose 00:00 top edge isn't where the event starts.
+  const dragStartSV = useDerivedValue(
+    () => ({
+      minutes: startHours * MINUTES_PER_HOUR,
+      ownsStart,
+    }),
+    [startHours, ownsStart],
+  );
 
   // Live pixel height of the box, driven on the UI thread by the shared
   // cellHeight (plus any in-progress resize). Handed to renderEvent so custom
@@ -364,15 +469,76 @@ function AnimatedEventBox<T>({
     [durationHours],
   );
 
-  const boxStyle = useAnimatedStyle(
-    () => ({
-      // A top-edge resize pushes the box down and shortens it (start moves later).
-      top: (startHours - minHour) * cellHeight.value + moveOffset.value + resizeStartDelta.value,
-      height: boxHeight.value,
+  // The source segment may stop at midnight while the full event continues in
+  // the next column. Keep the height passed to custom renderers identical to the
+  // wrapper they fill, while `boxHeight` retains the complete duration for drag
+  // math and the floating cross-page ghost.
+  const visibleBoxHeight = useDerivedValue(() => {
+    const top =
+      (startHours - minHour) * cellHeight.value + moveOffset.value + resizeStartDelta.value;
+    const dayEnd = (HOURS_PER_DAY - minHour) * cellHeight.value;
+    return Math.max(Math.min(boxHeight.value, dayEnd - top), MIN_EVENT_HEIGHT);
+  }, [startHours, minHour]);
+
+  const boxStyle = useAnimatedStyle(() => {
+    // A top-edge resize pushes the box down and shortens it (start moves later).
+    const top =
+      (startHours - minHour) * cellHeight.value + moveOffset.value + resizeStartDelta.value;
+    // Cut the box off at midnight; whatever runs past it shows in the next column
+    // instead (see MoveSpillPreview), the way a committed event spanning midnight
+    // already renders. Purely geometric, so a resting box (already clipped to the
+    // day by `layoutDayEvents`) is untouched and the height doesn't jump when a
+    // drag commits.
+    return {
+      top,
+      height: visibleBoxHeight.value,
       transform: [{ translateX: moveOffsetX.value }],
       zIndex: dragZ.value,
-    }),
-    [startHours, durationHours, minHour],
+    };
+  }, [startHours, minHour]);
+
+  // Pixel height of the part of a move that runs past midnight, or 0 when nothing
+  // spills. Measured against the end of the day, not `maxHour`: a narrowed window
+  // leaves plenty of events hanging below the last visible hour without them
+  // reaching the next day. Bails on the first line for a box that isn't being
+  // moved, which is every box but one.
+  const spillHeight = useDerivedValue(() => {
+    if (!moving.value || lifted.value || cellHeight.value <= 0) return 0;
+    const liveStartHours = startHours + moveOffset.value / cellHeight.value;
+    const overflowHours = liveStartHours + durationHours - HOURS_PER_DAY;
+    if (overflowHours <= 0) return 0;
+    const columnDelta = dayWidth > 0 ? Math.round(moveOffsetX.value / dayWidth) : 0;
+    const target = Math.min(Math.max(dayIndex + columnDelta, 0), dayCount - 1);
+    const next = target + nextDayDirection;
+    // Only when that column really is the next calendar day (`hiddenDays` can
+    // break the run), since the tail would otherwise land off-view.
+    if (next < 0 || next >= dayCount || dayOrdinals[next] - dayOrdinals[target] !== 1) return 0;
+    return Math.min(overflowHours, maxHour - minHour) * cellHeight.value;
+  }, [
+    startHours,
+    durationHours,
+    minHour,
+    maxHour,
+    dayWidth,
+    dayIndex,
+    dayCount,
+    dayOrdinals,
+    nextDayDirection,
+  ]);
+
+  // Mount the spill preview only while a drag is actually spilling, off the UI
+  // thread. It's one extra view plus the consumer's event renderer, so mounting it
+  // on every box would inflate the grid's node count for something that is almost
+  // never showing. Mounting it at the grab would also re-render at the most
+  // jank-sensitive moment of the gesture.
+  const [previewMounted, setPreviewMounted] = useState(false);
+  useAnimatedReaction(
+    () => spillHeight.value > 0,
+    (spilling, previous) => {
+      // `previous` is null on the reaction's first run, which would otherwise cost
+      // every box on every page a thread hop to set the state it already has.
+      if (previous !== null && spilling !== previous) runOnJS(setPreviewMounted)(spilling);
+    },
   );
 
   // Clear the drag preview once the committed change re-renders this box at its
@@ -508,6 +674,7 @@ function AnimatedEventBox<T>({
       .enabled(canMove)
       .onStart((event) => {
         dragZ.value = DRAG_EVENT_Z;
+        moving.value = 1;
         edgeDir.value = 0;
         lifted.value = 0;
         // Where in the box the finger grabbed, and the live finger position, so
@@ -526,8 +693,16 @@ function AnimatedEventBox<T>({
         if (lifted.value && pagerLeftSV && pagerTopSV && ghostXSV && ghostYSV) {
           ghostXSV.value = event.absoluteX - grabX.value - pagerLeftSV.value;
           ghostYSV.value = event.absoluteY - grabY.value - pagerTopSV.value;
-        } else {
-          moveOffset.value = event.translationY;
+        } else if (cellHeight.value > 0) {
+          // Hold the start inside the day; the end is free to run past it (the
+          // spill preview shows where it lands). Same rule the commit applies, so
+          // the box never previews a position it can't be dropped in.
+          const { minutes: startMinutes, ownsStart } = dragStartSV.value;
+          const dragged = startMinutes + (event.translationY / cellHeight.value) * MINUTES_PER_HOUR;
+          const held = ownsStart
+            ? clampMoveStartMinutes(dragged, minHour, maxHour, snapMinutes)
+            : dragged;
+          moveOffset.value = ((held - startMinutes) / MINUTES_PER_HOUR) * cellHeight.value;
           moveOffsetX.value = event.translationX;
         }
         // Dragging the finger to the pager's left/right edge arms an edge dwell
@@ -549,7 +724,17 @@ function AnimatedEventBox<T>({
         // gesture ends cleanly or is cancelled as the page moves under it), so the
         // drop lands even when onEnd doesn't fire on device. Nothing to do here.
         if (lifted.value) return;
-        const minuteDelta = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
+        const { minutes: startMinutes, ownsStart } = dragStartSV.value;
+        // Snap the vertical drag, then hold the start inside the day: a move keeps
+        // its duration, so the end may run past midnight and continue on the next
+        // day, but the event still starts in the column it was dropped on. A
+        // segment clipped from an earlier day is exempt: it doesn't own the start,
+        // so holding it would stop the whole event from being dragged earlier.
+        const snapped = snapDeltaMinutes(event.translationY, cellHeight.value, snapMinutes);
+        const minuteDelta = ownsStart
+          ? clampMoveStartMinutes(startMinutes + snapped, minHour, maxHour, snapMinutes) -
+            startMinutes
+          : snapped;
         // Map the horizontal drag to whole day columns, clamped so the event
         // can't leave the visible range.
         const rawDayDelta = dayWidth > 0 ? Math.round(event.translationX / dayWidth) : 0;
@@ -584,6 +769,10 @@ function AnimatedEventBox<T>({
           moveOffsetX.value = 0;
           lifted.value = 0;
         }
+        // The preview unmounts from the `spillHeight` reaction once the commit
+        // lands and clears `moveOffset`; this is the safety net for a cancel,
+        // where `onEnd` never runs.
+        moving.value = 0;
         runOnJS(releaseEdge)();
       });
     // Native: long-press to pick up. Web: activate past a small drag in either
@@ -600,6 +789,10 @@ function AnimatedEventBox<T>({
     moveOffset,
     moveOffsetX,
     dragZ,
+    moving,
+    dragStartSV,
+    minHour,
+    maxHour,
     edgeDir,
     lifted,
     grabX,
@@ -757,7 +950,7 @@ function AnimatedEventBox<T>({
       <RenderEventComponent
         event={positioned.event}
         mode={mode}
-        boxHeight={boxHeight}
+        boxHeight={visibleBoxHeight}
         continuesBefore={positioned.continuesBefore}
         continuesAfter={positioned.continuesAfter}
         accessibilityActions={accessibilityActions}
@@ -791,7 +984,28 @@ function AnimatedEventBox<T>({
   // Only wrap in the move gesture when movable; the resize grips inside `box`
   // carry their own gestures, so a resize-only event still works.
   if (!canMove) return box;
-  return <GestureDetector gesture={moveGesture}>{box}</GestureDetector>;
+  return (
+    <>
+      <GestureDetector gesture={moveGesture}>{box}</GestureDetector>
+      {/* Skipped for a segment that already continues after: it owns a real
+          next-day box, so a preview on top of it would just double up. */}
+      {previewMounted && !positioned.continuesAfter ? (
+        <MoveSpillPreview
+          spillHeight={spillHeight}
+          moveOffsetX={moveOffsetX}
+          cellHeight={cellHeight}
+          dayLeftPx={dayLeftPx}
+          dayWidth={dayWidth}
+          nextDayDirection={nextDayDirection}
+          minHour={minHour}
+          event={positioned.event}
+          mode={mode}
+          renderEvent={renderEvent}
+          slotProps={slot("event", { themed: theme.containers.timeGridEvent })}
+        />
+      ) : null}
+    </>
+  );
 }
 
 /** Replace the hour-axis label. Receives the hour (0–23) and the `ampm` flag. */
@@ -1607,8 +1821,11 @@ function TimetablePageInner<T>({
                       positioned={positioned}
                       cellHeight={heightSource}
                       minHour={minHour}
+                      maxHour={maxHour}
                       left={dayLeft(dayIndex) + positioned.column * columnWidth}
                       width={columnWidth}
+                      dayLeftPx={dayLeft(dayIndex)}
+                      nextDayDirection={isRTL ? -1 : 1}
                       dayWidth={dayWidth}
                       dayIndex={dayIndex}
                       dayCount={days.length}
@@ -1950,6 +2167,7 @@ function TimeGridInner<T>({
     containerWidth,
     hourColumnWidth,
     minHour: clampedMinHour,
+    maxHour: clampedMaxHour,
     snapMinutes: Math.max(1, dragStepMinutes),
     onDragEvent,
     onChangeDate,
@@ -1972,6 +2190,7 @@ function TimeGridInner<T>({
         containerWidth: cw,
         hourColumnWidth: hcw,
         minHour: min,
+        maxHour: max,
         snapMinutes: snap,
         onDragEvent: onDrag,
         onChangeDate: onDate,
@@ -1992,7 +2211,9 @@ function TimeGridInner<T>({
       const hoursFromMin =
         (ghostLocalY - gridTop.value - HOUR_LABEL_TOP_INSET + scrollY.value) / cellHeight.value;
       const rawMinutes = (min + hoursFromMin) * MINUTES_PER_HOUR;
-      const minutes = Math.round(rawMinutes / snap) * snap;
+      // Same rule as an in-page move: the start stays in the day it landed on,
+      // while the duration is free to carry the end past midnight.
+      const minutes = clampMoveStartMinutes(Math.round(rawMinutes / snap) * snap, min, max, snap);
       const start = new Date(days[col]);
       start.setHours(0, 0, 0, 0);
       start.setMinutes(minutes);
@@ -2119,6 +2340,7 @@ function TimeGridInner<T>({
     containerWidth,
     hourColumnWidth,
     minHour: clampedMinHour,
+    maxHour: clampedMaxHour,
     snapMinutes: Math.max(1, dragStepMinutes),
     onDragEvent,
     onChangeDate,

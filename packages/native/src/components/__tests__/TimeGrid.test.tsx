@@ -1,6 +1,6 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import { StyleSheet, Text } from "react-native";
-import type { CalendarEvent } from "../../types";
+import type { CalendarEvent, RenderEventArgs } from "../../types";
 
 // Capture the props handed to the virtualized list, and render only the active
 // page through `renderItem`. The real LegendList can't lay out under Jest (no
@@ -30,6 +30,92 @@ const event: CalendarEvent<WithId> = {
 };
 
 const noop = () => {};
+
+const moveGestureHarness = () => {
+  const { __gestures } = require("react-native-gesture-handler") as {
+    __gestures: Array<{
+      calls: Record<string, unknown[]>;
+      handlers: {
+        onStart?: (event: Record<string, number>) => void;
+        onUpdate?: (event: Record<string, number>) => void;
+        onEnd?: (event: Record<string, number>) => void;
+        onFinalize?: () => void;
+      };
+    }>;
+  };
+  const gesture = __gestures.find(
+    (candidate) => candidate.calls.activateAfterLongPress?.[0] === 500,
+  );
+  if (!gesture) throw new Error("move gesture not found");
+  return gesture.handlers;
+};
+
+const animatedReactionHarness = () =>
+  require("react-native-reanimated") as {
+    __reactions: unknown[];
+    __flushAnimatedReactions: () => void;
+  };
+
+describe("TimeGrid midnight drag", () => {
+  beforeEach(() => {
+    const gestureHandler = require("react-native-gesture-handler") as { __gestures: unknown[] };
+    gestureHandler.__gestures.length = 0;
+    animatedReactionHarness().__reactions.length = 0;
+  });
+
+  it("commits an overnight move and exposes only the clipped source height", () => {
+    const onDragEvent = jest.fn();
+    let observedBoxHeight: { value: number } | undefined;
+    const ProbeEvent = ({ boxHeight, continuesBefore }: RenderEventArgs<WithId>) => {
+      if (!continuesBefore) observedBoxHeight = boxHeight;
+      return <Text>Late shift</Text>;
+    };
+    const late: CalendarEvent<WithId> = {
+      id: "late",
+      title: "Late shift",
+      start: new Date(2026, 0, 6, 19, 0, 0),
+      end: new Date(2026, 0, 6, 23, 0, 0),
+    };
+    const { getAllByText } = render(
+      <TimeGrid
+        mode="week"
+        date={new Date(2026, 0, 6, 12, 0, 0)}
+        events={[late]}
+        cellHeight={{ value: 48 } as never}
+        hourHeight={48}
+        weekStartsOn={1}
+        renderEvent={ProbeEvent}
+        keyExtractor={(item) => item.id}
+        onChangeDate={noop}
+        onPressEvent={noop}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const move = moveGestureHarness();
+
+    act(() => {
+      move.onStart?.({ x: 10, y: 10, absoluteX: 200, absoluteY: 300 });
+      move.onUpdate?.({ translationX: 0, translationY: 1200, absoluteX: 200, absoluteY: 1500 });
+      animatedReactionHarness().__flushAnimatedReactions();
+    });
+
+    // The start clamps to 23:45. Only 15 minutes remain before midnight, so the
+    // source renderer receives the same 32px minimum as its clipped wrapper.
+    expect(observedBoxHeight?.value).toBe(32);
+
+    act(() => {
+      move.onEnd?.({ translationX: 0, translationY: 1200 });
+      move.onFinalize?.();
+      animatedReactionHarness().__flushAnimatedReactions();
+    });
+
+    expect(onDragEvent).toHaveBeenCalledTimes(1);
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent<WithId>, Date, Date];
+    expect([start.getDate(), start.getHours(), start.getMinutes()]).toEqual([6, 23, 45]);
+    expect([end.getDate(), end.getHours(), end.getMinutes()]).toEqual([7, 3, 45]);
+    expect(getAllByText("Late shift")).toHaveLength(1);
+  });
+});
 
 describe("TimeGrid event updates", () => {
   // Pages are virtualized by date, so a list item only repaints when its key,

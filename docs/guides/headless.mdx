@@ -125,7 +125,8 @@ Every helper below is pure (safe in tests, on a server, or in a worker). See the
 TypeScript types for exact signatures.
 
 - **Drag math** — `cellRangeFromDrag` (a sweep to start/end), `resolveDraggedBounds`
-  (a move/resize to snapped bounds), `snapDeltaMinutes`, `shiftMinutes`.
+  (a move/resize to snapped bounds), `clampMoveStartMinutes` (holds a moved start
+  inside the visible hour window), `snapDeltaMinutes`, `shiftMinutes`.
 - **Event display** — `eventTimeLabel`, `eventAccessibilityLabel`,
   `titleNumberOfLines` / `titleEllipsizeMode`, `isTimeVisibleAtHeight`, `formatHour`
   (the shared time-grid hour-axis label both renderers default to).
