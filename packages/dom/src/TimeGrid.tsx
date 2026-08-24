@@ -259,7 +259,8 @@ type DragState = {
   dayDelta: number;
   /** Pixel equivalent of dayDelta, applied as a transform on the dragged box. */
   dayOffsetPx: number;
-  /** Whether the dragged segment already carries on into the next day. */
+  /** Whether the dragged segment carries on from the previous day / into the next. */
+  continuesBefore: boolean;
   continuesAfter: boolean;
   /** Hours of a move that run past the end of the day, previewed in the next column. */
   spillHours: number;
@@ -804,6 +805,7 @@ export function TimeGrid<T = unknown>({
     kind: "move" | "resize" | "resize-start",
     startHours: number,
     durationHours: number,
+    continuesBefore: boolean,
     continuesAfter: boolean,
     dayIndex: number,
     onPress?: () => void,
@@ -851,6 +853,7 @@ export function TimeGrid<T = unknown>({
       kind,
       startHours,
       durationHours,
+      continuesBefore,
       continuesAfter,
       dayDelta: 0,
       dayOffsetPx: 0,
@@ -1495,6 +1498,7 @@ export function TimeGrid<T = unknown>({
                                 "move",
                                 pe.startHours,
                                 pe.durationHours,
+                                pe.continuesBefore,
                                 pe.continuesAfter,
                                 dayIndex,
                                 onPress,
@@ -1542,6 +1546,7 @@ export function TimeGrid<T = unknown>({
                               "resize-start",
                               pe.startHours,
                               pe.durationHours,
+                              pe.continuesBefore,
                               pe.continuesAfter,
                               dayIndex,
                             );
@@ -1557,7 +1562,12 @@ export function TimeGrid<T = unknown>({
                           }}
                         />
                       ) : null}
-                      {canResize ? (
+                      {/* Only the segment that owns the real end may be resized
+                          from the bottom (matching the native renderer). On a
+                          continued segment the bottom edge is the day boundary,
+                          not the event's end, so dragging it would move an end
+                          the user can't see. */}
+                      {canResize && !pe.continuesAfter ? (
                         <div
                           onPointerDown={(e) => {
                             e.stopPropagation();
@@ -1568,6 +1578,7 @@ export function TimeGrid<T = unknown>({
                               "resize",
                               pe.startHours,
                               pe.durationHours,
+                              pe.continuesBefore,
                               pe.continuesAfter,
                               dayIndex,
                             );

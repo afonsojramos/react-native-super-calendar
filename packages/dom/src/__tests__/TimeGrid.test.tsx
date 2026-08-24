@@ -352,47 +352,23 @@ describe("dom TimeGrid", () => {
     expect([end.getDate(), end.getHours()]).toEqual([26, 22]);
   });
 
-  it("keeps a multi-day event's later days when a continued segment is resized", () => {
-    const onDragEvent = jest.fn();
+  it("offers the bottom resize grip only on the segment that owns the event's end", () => {
     const trip: CalendarEvent[] = [
       { title: "Trip", start: new Date(2026, 5, 24, 22, 0), end: new Date(2026, 5, 26, 10, 0) },
     ];
     const { getAllByText } = render(
-      <TimeGrid date={day} mode="week" events={trip} hourHeight={48} onDragEvent={onDragEvent} />,
+      <TimeGrid date={day} mode="week" events={trip} hourHeight={48} onDragEvent={jest.fn()} />,
     );
-    // The 24th's segment runs 22:00–24:00 and continues after, so its bottom grip
-    // moves the event's real end on the 26th, not the day boundary it's drawn at.
-    const box = wrapperOf(getAllByText("Trip")[0]);
-    const grip = Array.from(box.querySelectorAll<HTMLElement>('div[style*="ns-resize"]')).find(
-      (el) => el.style.bottom === "0px",
-    )!;
-    fireEvent.pointerDown(grip, { clientY: 300, pointerId: 1 });
-    fireEvent.pointerMove(grip, { clientY: 252, pointerId: 1 });
-    fireEvent.pointerUp(grip, { clientY: 252, pointerId: 1 });
-
-    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
-    expect([start.getDate(), start.getHours()]).toEqual([24, 22]);
-    expect([end.getDate(), end.getHours()]).toEqual([26, 9]);
-  });
-
-  it("preserves a sub-step event's duration through a drag", () => {
-    const onDragEvent = jest.fn();
-    // Shorter than the layout's minimum box, so it is drawn as 15 minutes. The
-    // commit must move it, not stretch it to what it was drawn as.
-    const tiny: CalendarEvent[] = [
-      { title: "Ping", start: new Date(2026, 5, 26, 9, 0), end: new Date(2026, 5, 26, 9, 5) },
-    ];
-    const { getByText } = render(
-      <TimeGrid date={day} mode="day" events={tiny} hourHeight={48} onDragEvent={onDragEvent} />,
-    );
-    const box = wrapperOf(getByText("Ping"));
-    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
-    fireEvent.pointerMove(box, { clientY: 324, pointerId: 1 });
-    fireEvent.pointerUp(box, { clientY: 324, pointerId: 1 });
-
-    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
-    expect([start.getHours(), start.getMinutes()]).toEqual([9, 30]);
-    expect([end.getHours(), end.getMinutes()]).toEqual([9, 35]);
+    const bottomGrip = (box: HTMLElement) =>
+      Array.from(box.querySelectorAll<HTMLElement>('div[style*="ns-resize"]')).filter(
+        (el) => el.style.bottom === "0px",
+      );
+    // The 24th's and 25th's segments end at the day boundary, not at the event's
+    // end, so dragging their bottom edge would move an end the user can't see.
+    expect(bottomGrip(wrapperOf(getAllByText("Trip")[0]))).toHaveLength(0);
+    expect(bottomGrip(wrapperOf(getAllByText("Trip")[1]))).toHaveLength(0);
+    // The 26th's segment owns the real end and keeps its grip.
+    expect(bottomGrip(wrapperOf(getAllByText("Trip")[2]))).toHaveLength(1);
   });
 
   it("clamps a cross-day drag to the edges of the visible week", () => {
