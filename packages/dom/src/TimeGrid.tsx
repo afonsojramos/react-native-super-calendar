@@ -42,6 +42,7 @@ import {
   isWeekend,
   layoutDayEvents,
   overlapsOtherEvents,
+  type PositionedEvent,
   useNow,
   type TimeGridMode,
   titleNumberOfLines,
@@ -801,19 +802,19 @@ export function TimeGrid<T = unknown>({
     finishDrag();
   };
 
+  // Takes the laid-out segment whole rather than five of its fields: the two
+  // `continues*` flags are the same type, so passing them positionally invites a
+  // silent transposition.
   const beginDrag = (
     e: ReactPointerEvent,
-    event: CalendarEvent<T>,
+    pe: PositionedEvent<T>,
     key: string,
     kind: "move" | "resize" | "resize-start",
-    startHours: number,
-    durationHours: number,
-    continuesBefore: boolean,
-    continuesAfter: boolean,
     dayIndex: number,
     onPress?: () => void,
   ) => {
     if (!onDragEvent) return;
+    const { event, startHours, durationHours, continuesBefore, continuesAfter } = pe;
     e.stopPropagation();
     try {
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -1493,19 +1494,7 @@ export function TimeGrid<T = unknown>({
                       // remounting on a page change.
                       onPointerDown={
                         canMove
-                          ? (e) =>
-                              beginDrag(
-                                e,
-                                pe.event,
-                                key,
-                                "move",
-                                pe.startHours,
-                                pe.durationHours,
-                                pe.continuesBefore,
-                                pe.continuesAfter,
-                                dayIndex,
-                                onPress,
-                              )
+                          ? (e) => beginDrag(e, pe, key, "move", dayIndex, onPress)
                           : undefined
                       }
                       onClick={canMove ? undefined : onPress}
@@ -1542,17 +1531,7 @@ export function TimeGrid<T = unknown>({
                         <div
                           onPointerDown={(e) => {
                             e.stopPropagation();
-                            beginDrag(
-                              e,
-                              pe.event,
-                              key,
-                              "resize-start",
-                              pe.startHours,
-                              pe.durationHours,
-                              pe.continuesBefore,
-                              pe.continuesAfter,
-                              dayIndex,
-                            );
+                            beginDrag(e, pe, key, "resize-start", dayIndex);
                           }}
                           style={{
                             position: "absolute",
@@ -1574,17 +1553,7 @@ export function TimeGrid<T = unknown>({
                         <div
                           onPointerDown={(e) => {
                             e.stopPropagation();
-                            beginDrag(
-                              e,
-                              pe.event,
-                              key,
-                              "resize",
-                              pe.startHours,
-                              pe.durationHours,
-                              pe.continuesBefore,
-                              pe.continuesAfter,
-                              dayIndex,
-                            );
+                            beginDrag(e, pe, key, "resize", dayIndex);
                           }}
                           style={{
                             position: "absolute",
