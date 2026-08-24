@@ -524,7 +524,9 @@ function AnimatedEventBox<T>({
   useAnimatedReaction(
     () => spillHeight.value > 0,
     (spilling, previous) => {
-      if (spilling !== previous) runOnJS(setPreviewMounted)(spilling);
+      // `previous` is null on the reaction's first run, which would otherwise cost
+      // every box on every page a thread hop to set the state it already has.
+      if (previous !== null && spilling !== previous) runOnJS(setPreviewMounted)(spilling);
     },
   );
 
