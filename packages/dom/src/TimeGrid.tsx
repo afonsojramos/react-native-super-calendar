@@ -433,7 +433,10 @@ export function TimeGrid<T = unknown>({
   const slot = createSlots<TimeGridSlot>({ classNames, styles });
   const scrollRef = useRef<HTMLDivElement>(null);
   const dfns = locale ? { locale } : undefined;
-  const snapHours = dragStepMinutes / 60;
+  // Clamped like the native renderer: a zero or negative step would divide by zero
+  // in the snap below and put NaN through every drag commit.
+  const snapMinutes = Math.max(1, dragStepMinutes);
+  const snapHours = snapMinutes / 60;
 
   // The visible hour window [windowStart, windowEnd). Clamped the same way as the
   // native renderer so out-of-range props can't invert or overflow the day.
@@ -669,7 +672,7 @@ export function TimeGrid<T = unknown>({
       const raw = snap(dragOrigin.current.startHours + dHours);
       const startHours = d.continuesBefore
         ? raw
-        : clampMoveStartMinutes(raw * 60, windowStart, windowEnd, dragStepMinutes) / 60;
+        : clampMoveStartMinutes(raw * 60, windowStart, windowEnd, snapMinutes) / 60;
       // Map the horizontal drag to whole day columns, clamped so the in-view box
       // can't leave the visible range (mirrors the native renderer). Once paged,
       // the drop day comes from the hit-test instead.
@@ -921,10 +924,10 @@ export function TimeGrid<T = unknown>({
     const moved = Math.abs(endPx - o.startPx) > 4;
     const h = hourHeightRef.current;
     if (moved && onCreateEvent) {
-      const range = cellRangeFromDrag(day, o.startPx, endPx, h, windowStart, dragStepMinutes);
+      const range = cellRangeFromDrag(day, o.startPx, endPx, h, windowStart, snapMinutes);
       if (range) onCreateEvent(range.start, range.end);
     } else if (onPressCell) {
-      const at = cellRangeFromDrag(day, o.startPx, o.startPx, h, windowStart, dragStepMinutes);
+      const at = cellRangeFromDrag(day, o.startPx, o.startPx, h, windowStart, snapMinutes);
       if (at) onPressCell(at.start);
     }
     createOrigin.current = null;

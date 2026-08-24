@@ -420,6 +420,30 @@ describe("dom TimeGrid", () => {
     expect([end.getHours(), end.getMinutes()]).toEqual([9, 35]);
   });
 
+  it("survives a zero dragStepMinutes instead of committing an invalid date", () => {
+    const onDragEvent = jest.fn();
+    const { getByText } = render(
+      <TimeGrid
+        date={day}
+        mode="day"
+        events={events}
+        hourHeight={48}
+        dragStepMinutes={0}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const box = wrapperOf(getByText("Focus"));
+    // A zero step would divide by zero in the snap and put NaN through the whole
+    // commit; it falls back to a one-minute step, as on the native renderer.
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 348, pointerId: 1 });
+    fireEvent.pointerUp(box, { clientY: 348, pointerId: 1 });
+
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent, Date, Date];
+    expect(Number.isNaN(start.getTime())).toBe(false);
+    expect([start.getHours(), end.getHours()]).toEqual([15, 17]);
+  });
+
   it("clamps a cross-day drag to the edges of the visible week", () => {
     const onDragEvent = jest.fn();
     const { getByText } = render(
