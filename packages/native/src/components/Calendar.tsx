@@ -60,6 +60,12 @@ export type CalendarSlot = MonthViewSlot | TimeGridSlot | AgendaSlot | YearViewS
 export type CalendarProps<T> = SlotStyleProps<CalendarSlot> & {
   events: CalendarEvent<T>[];
   mode: CalendarMode;
+  /**
+   * The controlled anchor date, read in the device's local time zone. Construct
+   * it as a local date (`new Date(2026, 7, 24)`), not a UTC instant:
+   * `new Date("2026-08-24T00:00:00Z")` is still Aug 23 on devices west of UTC
+   * and anchors the previous week.
+   */
   date: Date;
   onChangeDate: (date: Date) => void;
   /** Fired alongside `onChangeDate` with the `[start, end]` of the newly-visible range. */
