@@ -29,6 +29,29 @@ const zoned = eventsInTimeZone(events, "America/New_York");
   instant. Keep your source events around for editing and saving.
 </Warning>
 
+## Anchor dates are local
+
+The controlled `date` prop, like every `Date` the calendar reads, is
+interpreted in the device's local time zone: all date math runs through
+date-fns (`startOfWeek`, `startOfMonth`, ...) on the local clock. Construct
+anchors as local dates, not UTC instants:
+
+```ts
+new Date(2026, 7, 24); // local Aug 24, anchors the week you expect everywhere
+new Date("2026-08-24T00:00:00Z"); // UTC instant, still Aug 23 west of UTC
+```
+
+On a device west of UTC, that UTC-midnight instant is still the evening of
+Aug 23 locally, so a `week` view with `weekStartsOn: 1` builds the week of
+Monday Aug 17, a full week before the one intended (Aug 24 is itself a
+Monday). The same shift moves a `month` anchor built from
+`new Date("2026-08-01T00:00:00Z")` into July.
+
+`timeZone` doesn't change this: it shifts how events display, never how the
+`date` prop is read. The dates the calendar hands back (`onChangeDate`,
+`onChangeDateRange`, `onPressDay`, ...) are local dates too, so feeding them
+straight back into `date` is always safe.
+
 ## The now indicator
 
 The current-time line follows the same zone as your events: set `timeZone` on

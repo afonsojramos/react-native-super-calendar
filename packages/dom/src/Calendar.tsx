@@ -55,7 +55,13 @@ export interface CalendarProps<T = unknown>
    * a day-grouped agenda list, and the others a time grid.
    */
   mode?: CalendarMode;
-  /** Controlled anchor date. Change it (e.g. from your own header) to navigate. */
+  /**
+   * Controlled anchor date, read in the device's local time zone; change it
+   * (e.g. from your own header) to navigate. Construct it as a local date
+   * (`new Date(2026, 7, 24)`), not a UTC instant:
+   * `new Date("2026-08-24T00:00:00Z")` is still Aug 23 on devices west of UTC
+   * and anchors the previous week.
+   */
   date: Date;
   /**
    * Fires with the next/previous period's date when the user pages the focused
