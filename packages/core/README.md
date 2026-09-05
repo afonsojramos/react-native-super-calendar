@@ -53,6 +53,10 @@ import { clampMoveStartMinutes } from "@super-calendar/core";
 const startMinutes = clampMoveStartMinutes(rawStartMinutes, minHour, maxHour, snapMinutes);
 ```
 
+Use `resolveDraggedBounds` to commit a move or resize. Equal start and end deltas
+move the event while preserving elapsed duration, including across daylight
+saving changes. For a resize, pass zero for the edge you want to keep fixed.
+
 ## Documentation
 
 See the [full documentation](https://super-calendar.afonsojramos.me) and the [API reference](https://super-calendar.afonsojramos.me/reference/api).

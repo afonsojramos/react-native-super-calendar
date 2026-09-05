@@ -1,5 +1,5 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
-import { StyleSheet, Text } from "react-native";
+import { Dimensions, StyleSheet, Text } from "react-native";
 import type { CalendarEvent, RenderEventArgs } from "../../types";
 
 // Capture the props handed to the virtualized list, and render only the active
@@ -31,7 +31,7 @@ const event: CalendarEvent<WithId> = {
 
 const noop = () => {};
 
-const moveGestureHarness = () => {
+const moveGestureHarness = (index = 0) => {
   const { __gestures } = require("react-native-gesture-handler") as {
     __gestures: Array<{
       calls: Record<string, unknown[]>;
@@ -39,13 +39,13 @@ const moveGestureHarness = () => {
         onStart?: (event: Record<string, number>) => void;
         onUpdate?: (event: Record<string, number>) => void;
         onEnd?: (event: Record<string, number>) => void;
-        onFinalize?: () => void;
+        onFinalize?: (event?: Record<string, number>, success?: boolean) => void;
       };
     }>;
   };
-  const gesture = __gestures.find(
+  const gesture = __gestures.filter(
     (candidate) => candidate.calls.activateAfterLongPress?.[0] === 500,
-  );
+  )[index];
   if (!gesture) throw new Error("move gesture not found");
   return gesture.handlers;
 };
@@ -114,6 +114,168 @@ describe("TimeGrid midnight drag", () => {
     expect([start.getDate(), start.getHours(), start.getMinutes()]).toEqual([6, 23, 45]);
     expect([end.getDate(), end.getHours(), end.getMinutes()]).toEqual([7, 3, 45]);
     expect(getAllByText("Late shift")).toHaveLength(1);
+  });
+
+  it.each([0, 1, 2])(
+    "moves every multi-day preview segment when segment %i is grabbed",
+    (segment) => {
+      const trip: CalendarEvent<WithId> = {
+        id: "trip",
+        title: "Trip",
+        start: new Date(2026, 0, 6, 17),
+        end: new Date(2026, 0, 8, 21),
+      };
+      const onDragEvent = jest.fn();
+      const observed: Array<RenderEventArgs<WithId>> = [];
+      const ProbeEvent = (args: RenderEventArgs<WithId>) => {
+        observed.push(args);
+        return <Text>Trip</Text>;
+      };
+      const grid = (events: CalendarEvent<WithId>[]) => (
+        <TimeGrid
+          mode="week"
+          date={trip.start}
+          events={events}
+          hourHeight={48}
+          cellHeight={{ value: 48 } as never}
+          weekStartsOn={1}
+          hideHours
+          renderEvent={ProbeEvent}
+          keyExtractor={(item) => item.id}
+          onChangeDate={noop}
+          onPressEvent={noop}
+          onDragEvent={onDragEvent}
+        />
+      );
+      const { getAllByTestId, queryAllByTestId, rerender, UNSAFE_getAllByType } = render(
+        grid([trip]),
+      );
+      const move = moveGestureHarness(segment);
+      act(() => move.onStart?.({ x: 10, y: 10, absoluteX: 200, absoluteY: 300 }));
+      expect(
+        getAllByTestId("multi-day-move-preview", { includeHiddenElements: true }),
+      ).toHaveLength(7);
+      const previews = observed.slice(-7);
+      const translationX = Dimensions.get("window").width / 7;
+      act(() => {
+        move.onUpdate?.({ translationX, translationY: 48, absoluteX: 300, absoluteY: 348 });
+        animatedReactionHarness().__flushAnimatedReactions();
+      });
+      // Jan 7 18:00 through Jan 9 22:00, including the previously empty Friday.
+      expect(previews.map((preview) => preview.boxHeight?.value)).toEqual([
+        0, 0, 288, 1152, 1056, 0, 0,
+      ]);
+      expect(onDragEvent).not.toHaveBeenCalled();
+      rerender(grid([{ ...trip }]));
+      expect(
+        UNSAFE_getAllByType(ProbeEvent)
+          .slice(0, 3)
+          .map((node) => StyleSheet.flatten(node.parent!.props.style).opacity),
+      ).toEqual([0, 0, 0]);
+      act(() => {
+        move.onEnd?.({ translationX, translationY: 48 });
+        move.onFinalize?.({}, true);
+      });
+      expect(onDragEvent).toHaveBeenCalledWith(
+        trip,
+        new Date(2026, 0, 7, 18),
+        new Date(2026, 0, 9, 22),
+      );
+      // A controlled consumer may update after the gesture ends. Keep the
+      // complete preview at its snapped position until that update arrives.
+      expect(
+        queryAllByTestId("multi-day-move-preview", { includeHiddenElements: true }),
+      ).toHaveLength(7);
+      expect(previews.map((preview) => preview.boxHeight?.value)).toEqual([
+        0, 0, 288, 1152, 1056, 0, 0,
+      ]);
+      rerender(grid([{ ...trip, start: new Date(2026, 0, 7, 18), end: new Date(2026, 0, 9, 22) }]));
+      expect(
+        queryAllByTestId("multi-day-move-preview", { includeHiddenElements: true }),
+      ).toHaveLength(0);
+    },
+  );
+
+  it.each(["cancel", "reject"])("clears the multi-day preview on %s", (finish) => {
+    const trip: CalendarEvent<WithId> = { ...event, end: new Date(2026, 0, 8, 10) };
+    const onDragEvent = jest.fn(() => false);
+    const { queryAllByTestId } = render(
+      <TimeGrid
+        mode="week"
+        date={trip.start}
+        events={[trip]}
+        hourHeight={48}
+        cellHeight={{ value: 48 } as never}
+        weekStartsOn={1}
+        renderEvent={DefaultEvent}
+        keyExtractor={(item) => item.id}
+        onChangeDate={noop}
+        onPressEvent={noop}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const move = moveGestureHarness();
+    act(() => {
+      move.onStart?.({ x: 10, y: 10, absoluteX: 200, absoluteY: 300 });
+      move.onUpdate?.({ translationX: 0, translationY: 48, absoluteX: 200, absoluteY: 348 });
+    });
+    expect(
+      queryAllByTestId("multi-day-move-preview", { includeHiddenElements: true }),
+    ).toHaveLength(7);
+    act(() => {
+      if (finish === "reject") move.onEnd?.({ translationX: 0, translationY: 48 });
+      move.onFinalize?.({}, finish === "reject");
+    });
+    expect(onDragEvent).toHaveBeenCalledTimes(finish === "reject" ? 1 : 0);
+    expect(
+      queryAllByTestId("multi-day-move-preview", { includeHiddenElements: true }),
+    ).toHaveLength(0);
+  });
+
+  it("previews the committed end when vertical movement crosses a clock change", () => {
+    const trip: CalendarEvent<WithId> = {
+      id: "trip",
+      title: "Trip",
+      start: new Date(2026, 2, 29, 1),
+      end: new Date(2026, 2, 30, 10),
+    };
+    const date = new Date(2026, 2, 30);
+    const onDragEvent = jest.fn();
+    const observed: Array<RenderEventArgs<WithId>> = [];
+    const ProbeEvent = (args: RenderEventArgs<WithId>) => {
+      observed.push(args);
+      return <Text>Trip</Text>;
+    };
+    render(
+      <TimeGrid
+        mode="3days"
+        date={date}
+        weekStartsOn={1}
+        events={[trip]}
+        hourHeight={48}
+        cellHeight={{ value: 48 } as never}
+        renderEvent={ProbeEvent}
+        keyExtractor={(item) => item.id}
+        onChangeDate={noop}
+        onPressEvent={noop}
+        onDragEvent={onDragEvent}
+      />,
+    );
+    const move = moveGestureHarness();
+    act(() => move.onStart?.({ x: 10, y: 10, absoluteX: 200, absoluteY: 300 }));
+    const previews = observed.slice(-3);
+    act(() => {
+      move.onUpdate?.({ translationX: 0, translationY: 96, absoluteX: 200, absoluteY: 396 });
+      move.onEnd?.({ translationX: 0, translationY: 96 });
+      move.onFinalize?.({}, true);
+    });
+    const [, start, end] = onDragEvent.mock.calls[0] as [CalendarEvent<WithId>, Date, Date];
+    expect(end.getTime() - start.getTime()).toBe(trip.end.getTime() - trip.start.getTime());
+    expect(previews.map((preview) => preview.boxHeight?.value)).toEqual([
+      ((end.getTime() - date.getTime()) / 3_600_000) * 48,
+      0,
+      0,
+    ]);
   });
 });
 

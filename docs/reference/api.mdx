@@ -71,6 +71,10 @@ pitfall this avoids.
 | `onPressDay`            | `(date) => void`                         | Tap a month day cell.                                                             |
 | `onPressMore`           | `(events, date) => void`                 | Tap the `+N more` overflow.                                                       |
 
+On the time grid, dragging any segment of a multi-day event moves its whole range.
+All visible segments preview the move together on both renderers. Moving preserves
+duration; resizing changes only the selected edge. See [dragging](/guides/dragging).
+
 ## Selection
 
 | Prop                  | Type                   | Notes                                            |
@@ -137,3 +141,7 @@ the [Date selection](/guides/selection) guide.
 `@super-calendar/core` also exports `clampMoveStartMinutes`. Use it when a custom
 time-grid drag must keep the moved start inside the visible hour window without
 shortening an event that continues past midnight.
+
+`resolveDraggedBounds` preserves elapsed duration when you pass the same minute
+delta for both edges, including across daylight saving changes. The end's local
+clock time can change to keep that duration.

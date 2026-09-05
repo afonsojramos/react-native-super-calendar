@@ -17,8 +17,10 @@ import {
 } from "date-fns";
 import {
   createContext,
+  type Dispatch,
   memo,
   type ReactElement,
+  type SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -96,6 +98,7 @@ import { useWebGridZoom } from "../utils/useWebGridZoom";
 import { useWebPagerKeys } from "../utils/useWebPagerKeys";
 import { withEventAccessibilityLabel } from "../utils/withEventAccessibilityLabel";
 import { AllDayLane } from "./AllDayLane";
+import { type MultiDayMove, MultiDayMovePreview } from "./MultiDayMovePreview";
 
 // Horizontal swipe paging doesn't translate to web; there we disable it and page
 // with the arrow keys instead.
@@ -310,6 +313,9 @@ const HOUR_LABEL_NUDGE = 6;
 
 type AnimatedEventBoxProps<T> = {
   positioned: PositionedEvent<T>;
+  eventIndex: number;
+  movingEvent: CalendarEvent<T> | null;
+  onMovePreview: Dispatch<SetStateAction<MultiDayMove<T> | null>>;
   cellHeight: SharedValue<number>;
   minHour: number;
   maxHour: number;
@@ -351,6 +357,9 @@ type AnimatedEventBoxProps<T> = {
 
 function AnimatedEventBox<T>({
   positioned,
+  eventIndex,
+  movingEvent,
+  onMovePreview,
   cellHeight,
   minHour,
   maxHour,
@@ -442,6 +451,8 @@ function AnimatedEventBox<T>({
   const startHours = positioned.startHours;
   const durationHours = positioned.durationHours;
   const ownsStart = !positioned.continuesBefore;
+  const multiDay = positioned.continuesBefore || positioned.continuesAfter;
+  const hiddenForMove = positioned.event === movingEvent;
   // Where the move gesture clamps from, mirrored into a shared value so it isn't a
   // gesture dependency. A gesture memoized on a value the dragged event carries
   // would be rebuilt under the finger, and so torn down mid-drag, the moment a
@@ -503,7 +514,7 @@ function AnimatedEventBox<T>({
   // reaching the next day. Bails on the first line for a box that isn't being
   // moved, which is every box but one.
   const spillHeight = useDerivedValue(() => {
-    if (!moving.value || lifted.value || cellHeight.value <= 0) return 0;
+    if (multiDay || !moving.value || lifted.value || cellHeight.value <= 0) return 0;
     const liveStartHours = startHours + moveOffset.value / cellHeight.value;
     const overflowHours = liveStartHours + durationHours - HOURS_PER_DAY;
     if (overflowHours <= 0) return 0;
@@ -524,6 +535,7 @@ function AnimatedEventBox<T>({
     dayCount,
     dayOrdinals,
     nextDayDirection,
+    multiDay,
   ]);
 
   // Mount the spill preview only while a drag is actually spilling, off the UI
@@ -565,8 +577,8 @@ function AnimatedEventBox<T>({
 
   // Keep the latest event/handler in a ref so the gestures stay memoized but
   // never call into a stale closure.
-  const latest = useRef({ event: positioned.event, onDragEvent, onDragStart });
-  latest.current = { event: positioned.event, onDragEvent, onDragStart };
+  const latest = useRef({ event: positioned.event, eventIndex, onDragEvent, onDragStart });
+  latest.current = { event: positioned.event, eventIndex, onDragEvent, onDragStart };
 
   // Snap the box back to where it started (drop rejected or degenerate).
   const snapBack = useCallback(() => {
@@ -598,9 +610,14 @@ function AnimatedEventBox<T>({
       }
       // A handler may return false to reject the drop (e.g. an overlap or an
       // out-of-bounds slot); snap the box back to its original place.
-      if (handler(event, next.start, next.end) === false) snapBack();
+      if (handler(event, next.start, next.end) === false) {
+        snapBack();
+        onMovePreview(null);
+      } else if (multiDay && deltaStartMin === deltaEndMin) {
+        onMovePreview((move) => (move ? { ...move, phase: "dropped" } : null));
+      }
     },
-    [snapMinutes, snapBack],
+    [snapMinutes, snapBack, multiDay, onMovePreview],
   );
 
   // Fired on the JS thread when the gesture grabs the event, so consumers can
@@ -608,6 +625,21 @@ function AnimatedEventBox<T>({
   const notifyDragStart = useCallback(() => {
     latest.current.onDragStart?.(latest.current.event);
   }, []);
+
+  const beginMovePreview = useCallback(() => {
+    if (multiDay) {
+      onMovePreview({
+        event: latest.current.event,
+        eventIndex: latest.current.eventIndex,
+        phase: "dragging",
+        dayIndex,
+        offsetX: moveOffsetX,
+        offsetY: moveOffset,
+        lifted,
+      });
+    }
+  }, [multiDay, onMovePreview, dayIndex, moveOffsetX, moveOffset, lifted]);
+  const endMovePreview = useCallback(() => onMovePreview(null), [onMovePreview]);
 
   // Edge auto-advance dwell. Dragging the event past the visible columns and
   // holding there pages the view one period and carries the event onto it: same
@@ -683,6 +715,7 @@ function AnimatedEventBox<T>({
         grabY.value = event.y;
         liveAbsX.value = event.absoluteX;
         liveAbsY.value = event.absoluteY;
+        runOnJS(beginMovePreview)();
         runOnJS(notifyDragStart)();
       })
       .onUpdate((event) => {
@@ -743,6 +776,7 @@ function AnimatedEventBox<T>({
         if (minuteDelta === 0 && dayDelta === 0) {
           moveOffset.value = 0;
           moveOffsetX.value = 0;
+          runOnJS(endMovePreview)();
           return;
         }
         // Hold the snapped position so the box doesn't flash back to the
@@ -757,7 +791,7 @@ function AnimatedEventBox<T>({
         const totalDelta = minuteDelta + calendarDayDelta * MINUTES_PER_DAY;
         runOnJS(commitDrag)(totalDelta, totalDelta);
       })
-      .onFinalize(() => {
+      .onFinalize((_event, success) => {
         dragZ.value = 0;
         // Commit the cross-week drop here: onFinalize fires on every gesture end,
         // including the cancel RNGH reports when the source page moves under the
@@ -768,11 +802,17 @@ function AnimatedEventBox<T>({
           moveOffset.value = 0;
           moveOffsetX.value = 0;
           lifted.value = 0;
+          runOnJS(endMovePreview)();
         }
         // The preview unmounts from the `spillHeight` reaction once the commit
         // lands and clears `moveOffset`; this is the safety net for a cancel,
         // where `onEnd` never runs.
         moving.value = 0;
+        if (multiDay && !success) {
+          moveOffset.value = 0;
+          moveOffsetX.value = 0;
+          runOnJS(endMovePreview)();
+        }
         runOnJS(releaseEdge)();
       });
     // Native: long-press to pick up. Web: activate past a small drag in either
@@ -810,6 +850,9 @@ function AnimatedEventBox<T>({
     dayCount,
     dayOrdinals,
     commitDrag,
+    multiDay,
+    beginMovePreview,
+    endMovePreview,
     notifyDragStart,
     onEdgeAdvance,
     armEdge,
@@ -946,7 +989,10 @@ function AnimatedEventBox<T>({
     themed: theme.containers.timeGridEvent,
   });
   const box = (
-    <Animated.View {...eventSlot} style={[eventSlot.style, boxStyle]}>
+    <Animated.View
+      {...eventSlot}
+      style={[eventSlot.style, boxStyle, hiddenForMove ? { opacity: 0 } : null]}
+    >
       <RenderEventComponent
         event={positioned.event}
         mode={mode}
@@ -1407,6 +1453,23 @@ function TimetablePageInner<T>({
   );
 
   const dayLayouts = useMemo(() => days.map((day) => layoutDayEvents(events, day)), [days, events]);
+  const [multiDayMove, setMultiDayMove] = useState<MultiDayMove<T> | null>(null);
+  const movingEvent = multiDayMove
+    ? (events.find(
+        (event, index) =>
+          keyExtractor(event, index) === keyExtractor(multiDayMove.event, multiDayMove.eventIndex),
+      ) ?? null)
+    : null;
+  useEffect(() => {
+    if (
+      multiDayMove?.phase === "dropped" &&
+      (!movingEvent ||
+        movingEvent.start.getTime() !== multiDayMove.event.start.getTime() ||
+        movingEvent.end.getTime() !== multiDayMove.event.end.getTime())
+    ) {
+      setMultiDayMove(null);
+    }
+  }, [multiDayMove, movingEvent]);
 
   // Map a tap on empty grid space back to the date+time it represents. Reads the
   // live row height on the JS thread to convert the touch Y into minutes.
@@ -1819,6 +1882,9 @@ function TimetablePageInner<T>({
                       // flattened list of all days' boxes.
                       key={`${dayIndex}:${keyExtractor(positioned.event, eventIndex)}`}
                       positioned={positioned}
+                      eventIndex={events.indexOf(positioned.event)}
+                      movingEvent={movingEvent}
+                      onMovePreview={setMultiDayMove}
                       cellHeight={heightSource}
                       minHour={minHour}
                       maxHour={maxHour}
@@ -1846,6 +1912,19 @@ function TimetablePageInner<T>({
                   );
                 }),
             )}
+
+            {multiDayMove ? (
+              <MultiDayMovePreview
+                move={multiDayMove}
+                days={days}
+                cellHeight={heightSource}
+                dayWidth={dayWidth}
+                hourColumnWidth={hourColumnWidth}
+                minHour={minHour}
+                mode={mode}
+                renderEvent={renderEvent}
+              />
+            ) : null}
 
             {showNowIndicator && nowDayIndex >= 0 && nowInWindow ? (
               <NowIndicator

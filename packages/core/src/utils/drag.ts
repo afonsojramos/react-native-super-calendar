@@ -79,6 +79,7 @@ export function clampMoveStartMinutes(
 
 /** A copy of `date` shifted by `minutes` (may be negative). */
 export function shiftMinutes(date: Date, minutes: number): Date {
+  "worklet";
   const next = new Date(date);
   next.setMinutes(next.getMinutes() + minutes);
   return next;
@@ -87,7 +88,8 @@ export function shiftMinutes(date: Date, minutes: number): Date {
 /**
  * Resolve a committed drag into the event's new bounds: `start` shifts by
  * `deltaStartMinutes`, `end` by `deltaEndMinutes` (a move passes the same delta
- * to both; a resize passes 0 for the start). Returns `null` only when the change
+ * to both and preserves elapsed duration, including across DST; a resize passes
+ * 0 for the unchanged edge). Returns `null` only when the change
  * would *shrink* the event below one `snapMinutes` step, so a resize can't commit
  * a degenerate duration; a pure move (both deltas equal) keeps its duration and is
  * never rejected, even for an already sub-step event. Pure, so the commit path is
@@ -101,8 +103,11 @@ export function resolveDraggedBounds(
   snapMinutes: number,
 ): { start: Date; end: Date } | null {
   const nextStart = shiftMinutes(start, deltaStartMinutes);
-  const nextEnd = shiftMinutes(end, deltaEndMinutes);
   const oldDuration = end.getTime() - start.getTime();
+  const nextEnd =
+    deltaStartMinutes === deltaEndMinutes
+      ? new Date(nextStart.getTime() + oldDuration)
+      : shiftMinutes(end, deltaEndMinutes);
   const newDuration = nextEnd.getTime() - nextStart.getTime();
   // Reject only a shrink past one step — never a move, which preserves duration.
   if (newDuration < snapMinutes * 60_000 && newDuration < oldDuration) return null;
