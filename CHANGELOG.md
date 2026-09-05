@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.1](https://github.com/afonsojramos/super-calendar/compare/v2.9.0...v2.9.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* move multi-day event previews together ([#52](https://github.com/afonsojramos/super-calendar/issues/52)) ([a902ae4](https://github.com/afonsojramos/super-calendar/commit/a902ae4cd16c6d620a98f6edfecaee5208017642))
+
 ## [2.9.0](https://github.com/afonsojramos/super-calendar/compare/v2.8.2...v2.9.0) (2026-08-24)
 
 
