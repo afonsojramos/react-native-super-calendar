@@ -352,6 +352,109 @@ describe("dom TimeGrid", () => {
     expect([end.getDate(), end.getHours()]).toEqual([26, 22]);
   });
 
+  it.each([0, 1, 2])(
+    "moves every multi-day preview segment when segment %i is grabbed",
+    (segment) => {
+      const trip: CalendarEvent = {
+        title: "Trip",
+        start: new Date(2026, 5, 24, 17),
+        end: new Date(2026, 5, 26, 21),
+      };
+      const onDragEvent = jest.fn();
+      const grid = (events: CalendarEvent[]) => (
+        <TimeGrid
+          date={day}
+          mode="week"
+          events={events}
+          hourHeight={48}
+          onDragEvent={onDragEvent}
+        />
+      );
+      const { container, getAllByText, rerender } = render(grid([trip]));
+      const originals = getAllByText("Trip").map(wrapperOf);
+      const box = originals[segment];
+      box.parentElement!.getBoundingClientRect = () => ({ width: 100 }) as DOMRect;
+      fireEvent.pointerDown(box, { clientX: 150, clientY: 300, pointerId: 1 });
+      fireEvent.pointerMove(box, { clientX: 50, clientY: 348, pointerId: 1 });
+
+      const previews = [...container.querySelectorAll<HTMLElement>("[data-dragging]")];
+      expect(
+        previews.map((preview) => new Date(preview.parentElement!.dataset.date!).getDate()),
+      ).toEqual([23, 24, 25]);
+      expect(previews.map((preview) => [preview.style.top, preview.style.height])).toEqual([
+        ["864px", "288px"],
+        ["0px", "1152px"],
+        ["0px", "1056px"],
+      ]);
+      expect(originals.every((original) => original.style.visibility === "hidden")).toBe(true);
+      expect(onDragEvent).not.toHaveBeenCalled();
+      rerender(grid([{ ...trip }]));
+      expect(originals.every((original) => original.style.visibility === "hidden")).toBe(true);
+
+      fireEvent.pointerUp(box, { clientX: 50, clientY: 348, pointerId: 1 });
+      expect(onDragEvent).toHaveBeenCalledWith(
+        trip,
+        new Date(2026, 5, 23, 18),
+        new Date(2026, 5, 25, 22),
+      );
+      expect(container.querySelectorAll("[data-dragging]")).toHaveLength(0);
+      expect(originals.every((original) => original.style.visibility !== "hidden")).toBe(true);
+    },
+  );
+
+  it("restores all multi-day segments when a move is cancelled", () => {
+    const trip: CalendarEvent = {
+      title: "Trip",
+      start: new Date(2026, 5, 24, 22),
+      end: new Date(2026, 5, 26, 10),
+    };
+    const onDragEvent = jest.fn();
+    const { container, getAllByText } = render(
+      <TimeGrid date={day} mode="week" events={[trip]} hourHeight={48} onDragEvent={onDragEvent} />,
+    );
+    const originals = getAllByText("Trip").map(wrapperOf);
+    fireEvent.pointerDown(originals[0], { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(originals[0], { clientY: 348, pointerId: 1 });
+    fireEvent.pointerCancel(originals[0], { pointerId: 1 });
+    expect(onDragEvent).not.toHaveBeenCalled();
+    expect(container.querySelectorAll("[data-dragging]")).toHaveLength(0);
+    expect(originals.every((original) => original.style.visibility !== "hidden")).toBe(true);
+  });
+
+  it("keeps the held event when another event is inserted during a multi-day move", () => {
+    const trip: CalendarEvent = {
+      title: "Trip",
+      start: new Date(2026, 5, 24, 17),
+      end: new Date(2026, 5, 26, 21),
+    };
+    const onDragEvent = jest.fn();
+    const grid = (events: CalendarEvent[]) => (
+      <TimeGrid date={day} mode="week" events={events} hourHeight={48} onDragEvent={onDragEvent} />
+    );
+    const { container, getAllByText, getByText, rerender } = render(grid([trip]));
+    const box = wrapperOf(getAllByText("Trip")[0]);
+    fireEvent.pointerDown(box, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(box, { clientY: 348, pointerId: 1 });
+    rerender(
+      grid([
+        { title: "Earlier", start: new Date(2026, 5, 24, 10), end: new Date(2026, 5, 24, 11) },
+        { ...trip },
+      ]),
+    );
+    const earlier = wrapperOf(getByText("Earlier"));
+    expect(earlier.style.top).toBe("480px");
+    expect(earlier.hasAttribute("data-dragging")).toBe(false);
+    const previews = [...container.querySelectorAll("[data-dragging]")];
+    expect(previews).toHaveLength(3);
+    expect(previews.every((preview) => preview.textContent?.includes("Trip"))).toBe(true);
+    fireEvent.pointerUp(box, { clientY: 348, pointerId: 1 });
+    expect(onDragEvent).toHaveBeenCalledWith(
+      trip,
+      new Date(2026, 5, 24, 18),
+      new Date(2026, 5, 26, 22),
+    );
+  });
+
   it("offers the bottom resize grip only on the segment that owns the event's end", () => {
     const trip: CalendarEvent[] = [
       { title: "Trip", start: new Date(2026, 5, 24, 22, 0), end: new Date(2026, 5, 26, 10, 0) },

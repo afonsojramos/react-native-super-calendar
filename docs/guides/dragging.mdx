@@ -38,7 +38,11 @@ still the horizontal drag.
 
 `onDragEvent` then receives a `start` and `end` on different dates. Dragging any
 day's segment of the resulting multi-day event moves the whole thing, so it never
-gets clipped to the day you grabbed.
+gets clipped to the day you grabbed. All visible segments preview the move together,
+including segments that enter a new column. Both dates shift together to preserve
+the event's duration. For example, moving a Tuesday 17:00 to Thursday 21:00 event
+one day earlier previews Monday 17:00 to Wednesday 21:00, whichever segment you grab.
+Use a resize grip to change just the start or end.
 
 ### Hide the drag handle
 

@@ -790,7 +790,11 @@ export function TimeGrid<T = unknown>({
       const startShift =
         d.kind === "resize" ? 0 : segmentStart.getTime() - origin.segmentStart.getTime();
       const endShift =
-        d.kind === "resize-start" ? 0 : segmentEnd.getTime() - origin.segmentEnd.getTime();
+        d.kind === "move"
+          ? startShift
+          : d.kind === "resize-start"
+            ? 0
+            : segmentEnd.getTime() - origin.segmentEnd.getTime();
       const start = new Date(held.event.start.getTime() + startShift);
       const end = new Date(held.event.end.getTime() + endShift);
       if (end > start) onDragEventRef.current?.(held.event, start, end);
@@ -948,6 +952,39 @@ export function TimeGrid<T = unknown>({
     () => days.map((day) => layoutDayEvents(events, day)),
     [days, events],
   );
+
+  // Keep the original boxes mounted for pointer capture, but replace every
+  // segment of a moving multi-day event with the same shifted range.
+  const moveOrigin = dragOrigin.current;
+  const heldEvent = draggedRef.current?.event;
+  const movingEvent =
+    heldEvent &&
+    (events.includes(heldEvent)
+      ? heldEvent
+      : (events.find(
+          (event) =>
+            event.start.getTime() === heldEvent.start.getTime() &&
+            event.end.getTime() === heldEvent.end.getTime() &&
+            event.title === heldEvent.title,
+        ) ?? heldEvent));
+  const multiDayMove =
+    !paged &&
+    drag?.kind === "move" &&
+    (drag.continuesBefore || drag.continuesAfter) &&
+    moveOrigin &&
+    movingEvent
+      ? (() => {
+          const target = days[moveOrigin.dayIndex + drag.dayDelta];
+          const segmentStart = addMinutes(startOfDay(target), Math.round(drag.startHours * 60));
+          const shift = segmentStart.getTime() - moveOrigin.segmentStart.getTime();
+          return {
+            ...movingEvent,
+            start: new Date(movingEvent.start.getTime() + shift),
+            end: new Date(movingEvent.end.getTime() + shift),
+            allDay: false,
+          };
+        })()
+      : null;
 
   // The tail of an in-progress move that runs past midnight, shown on `dayIndex`
   // so the drop is visible on both days at once. `drag` and `draggedRef` are set
@@ -1341,7 +1378,10 @@ export function TimeGrid<T = unknown>({
             // The tail of a move that runs past midnight, previewed at the top of
             // this column. The dragged event is looked up from its `drag.key`
             // ("<originColumn>:<index>"), so no extra state has to track it.
-            const spill = spillPreviewFor(dayIndex);
+            const spill = multiDayMove ? null : spillPreviewFor(dayIndex);
+            const moveSegment = multiDayMove
+              ? layoutDayEvents<T>([multiDayMove], day)[0]
+              : undefined;
             return (
               <div
                 key={day.toISOString()}
@@ -1423,7 +1463,11 @@ export function TimeGrid<T = unknown>({
                   // Not while paged: after a page change the origin box is gone and
                   // the ghost stands in, so a same-slot event on the new page (e.g. a
                   // recurring one) must not also render lifted.
-                  const active = !paged && drag?.key === key ? drag : null;
+                  const active =
+                    !paged && drag?.key === key && (!multiDayMove || pe.event === movingEvent)
+                      ? drag
+                      : null;
+                  const hiddenForMove = !!multiDayMove && pe.event === movingEvent;
                   const startHours = active ? active.startHours : pe.startHours;
                   const durationHours = active ? active.durationHours : pe.durationHours;
                   // Drop events that fall entirely outside the visible window; those
@@ -1498,7 +1542,7 @@ export function TimeGrid<T = unknown>({
                           : undefined
                       }
                       onClick={canMove ? undefined : onPress}
-                      {...dataState({ "data-dragging": !!active })}
+                      {...dataState({ "data-dragging": !!active && !hiddenForMove })}
                       {...slot("event", {
                         base: {
                           position: "absolute",
@@ -1514,6 +1558,7 @@ export function TimeGrid<T = unknown>({
                           touchAction: canMove ? "none" : "auto",
                           zIndex: active ? 3 : 1,
                           opacity: active ? 0.85 : 1,
+                          visibility: hiddenForMove ? "hidden" : undefined,
                           // Snap the dragged box over the target day column so the
                           // drop location is visible before release.
                           ...(active && active.dayOffsetPx !== 0
@@ -1569,6 +1614,42 @@ export function TimeGrid<T = unknown>({
                     </div>
                   );
                 })}
+                {moveSegment ? (
+                  <div
+                    aria-hidden
+                    {...dataState({ "data-dragging": true })}
+                    {...slot("event", {
+                      base: {
+                        position: "absolute",
+                        top: (moveSegment.startHours - windowStart) * hourHeight,
+                        left: 1,
+                        right: 1,
+                        height: Math.max(moveSegment.durationHours * hourHeight, 14),
+                        pointerEvents: "none",
+                        zIndex: 3,
+                        opacity: 0.85,
+                      },
+                    })}
+                  >
+                    {(() => {
+                      const args: DomRenderEventArgs<T> = {
+                        event: moveSegment.event,
+                        mode,
+                        isAllDay: false,
+                        boxHeight: Math.max(moveSegment.durationHours * hourHeight, 14),
+                        continuesBefore: moveSegment.continuesBefore,
+                        continuesAfter: moveSegment.continuesAfter,
+                        ampm,
+                        onPress: () => {},
+                      };
+                      return Renderer ? (
+                        <Renderer {...args} />
+                      ) : (
+                        <DefaultDomEvent {...args} theme={theme} boxProps={slot("eventBox")} />
+                      );
+                    })()}
+                  </div>
+                ) : null}
                 {spill ? (
                   <div
                     aria-hidden

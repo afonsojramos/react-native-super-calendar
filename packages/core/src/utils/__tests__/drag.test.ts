@@ -147,6 +147,17 @@ describe("resolveDraggedBounds", () => {
     expect(next?.end.getMinutes()).toBe(30);
   });
 
+  it.each([
+    [new Date(2026, 2, 28, 17), new Date(2026, 2, 30, 21)],
+    [new Date(2026, 9, 24, 17), new Date(2026, 9, 26, 21)],
+  ])("preserves elapsed duration when moving a range across a clock change", (start, end) => {
+    for (const delta of [-1440, 1440]) {
+      const next = resolveDraggedBounds(start, end, delta, delta, 15);
+      expect(next?.start).toEqual(shiftMinutes(start, delta));
+      expect(next!.end.getTime() - next!.start.getTime()).toBe(end.getTime() - start.getTime());
+    }
+  });
+
   it("resizes by moving only the end edge", () => {
     const next = resolveDraggedBounds(start, end, 0, 30, 15);
     expect(next?.start.getTime()).toBe(start.getTime()); // start untouched
