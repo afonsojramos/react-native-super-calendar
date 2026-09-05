@@ -1,7 +1,17 @@
-import { render } from "@testing-library/react-native";
+import { cleanup, render } from "@testing-library/react-native";
 import type { CalendarEvent } from "../../types";
 import { DefaultEvent } from "../DefaultEvent";
 import { MonthList } from "../MonthList";
+
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  cleanup();
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
+});
 
 const baseProps = {
   date: new Date(2026, 5, 15), // June 2026

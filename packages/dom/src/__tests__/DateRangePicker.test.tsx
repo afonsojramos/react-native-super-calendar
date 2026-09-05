@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import type { DateRange } from "@super-calendar/core";
 
@@ -17,6 +17,16 @@ import { DatePicker, DateRangePicker } from "../DateRangePicker";
 // The trigger is the only button with aria-haspopup; the calendar renders many
 // day buttons once open, so target the trigger explicitly.
 const trigger = (c: HTMLElement) => c.querySelector('[aria-haspopup="dialog"]') as HTMLElement;
+
+beforeEach(() => {
+  jest.useFakeTimers({ now: new Date(2026, 6, 1) });
+});
+
+afterEach(() => {
+  cleanup();
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
+});
 
 describe("dom DatePicker", () => {
   it("shows the placeholder until a date is picked, then opens and selects", () => {
